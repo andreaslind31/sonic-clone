@@ -8,3 +8,8 @@
 # Env
 .env
 .env.local
+
+# Godot
+.godot/
+export_presets.cfg
+build/

@@ -1,0 +1,50 @@
+; Engine configuration file.
+; Generated for the sonic-clone project (Godot 4.4).
+
+config_version=5
+
+[application]
+
+config/name="Sonic Clone"
+config/description="Classic-style 360 degree platformer built on the Sonic Retro Physics Guide."
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.4", "GL Compatibility")
+
+[autoload]
+
+Game="*res://scripts/global/game.gd"
+Sfx="*res://scripts/global/sfx.gd"
+
+[display]
+
+window/size/viewport_width=424
+window/size/viewport_height=240
+window/size/window_width_override=1272
+window/size/window_height_override=720
+window/stretch/mode="viewport"
+window/stretch/aspect="keep"
+window/vsync/vsync_mode=1
+
+[layer_names]
+
+2d_physics/layer_1="terrain_a"
+2d_physics/layer_2="terrain_b"
+2d_physics/layer_3="player"
+2d_physics/layer_4="player_hitbox"
+2d_physics/layer_5="object"
+2d_physics/layer_6="solid_object"
+
+[physics]
+
+common/physics_ticks_per_second=60
+common/physics_interpolation=false
+2d/default_gravity=0.0
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/canvas_textures/default_texture_filter=0
+2d/snap/snap_2d_transforms_to_pixel=true
+2d/snap/snap_2d_vertices_to_pixel=true
+environment/defaults/default_clear_color=Color(0.19, 0.42, 0.85, 1)
