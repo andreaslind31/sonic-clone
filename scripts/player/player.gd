@@ -4,7 +4,9 @@ class_name Player
 ##
 ## Every constant below is the value published in the Sonic Retro Physics Guide
 ## (SPG), expressed in pixels per frame at 60 fps; `_physics_process` scales by
-## `delta * 60` so behaviour is identical if the tick rate is changed.
+## `delta * 60` so behaviour is identical if the tick rate is changed. They are
+## the reference values: live movement reads `stats`, and CharacterStats defaults
+## to exactly these numbers, so the roster is defined by what it overrides.
 ##
 ## Collision uses SPG-style sensors rather than Godot's move_and_slide: two
 ## floor sensors, two ceiling sensors and two push sensors are raycast against
@@ -58,9 +60,17 @@ const PUSH_RADIUS := 10.0
 const SHALLOW := deg_to_rad(22.5)
 const STEEP := deg_to_rad(45.0)
 
-enum State { NORMAL, SPINDASH, HURT, DEAD, GOAL }
+enum State { NORMAL, SPINDASH, HURT, DEAD, GOAL, CLIMB }
+
+## Air moves are variations on the airborne state rather than states of their own,
+## because the SPG air rules (drag, control, landing) still apply around them.
+enum AirMove { NONE, FLY, GLIDE, DASH, HAMMER }
 
 @export var start_path_layer := 0
+
+## Movement values for whoever is being played. Assigned before the node enters
+## the tree; defaults to the reference character so Player.new() stays usable.
+var stats: CharacterStats = Characters.runner()
 
 var ground_speed := 0.0
 var velocity := Vector2.ZERO
@@ -80,8 +90,13 @@ var spindash_charge := 0.0
 var camera_lag := 0            ## frames the camera should hold still
 var width_radius := WIDTH_RADIUS
 var height_radius := HEIGHT_RADIUS
+var push_radius := PUSH_RADIUS
 var look_timer := 0            ## frames spent holding up/down, for camera pan
 var control_enabled := true
+var air_move: AirMove = AirMove.NONE
+var air_move_timer := 0
+var ability_spent := false     ## one special move per airtime
+var climb_side := 0.0          ## which side the wall is on while climbing
 
 var _sensors: Sensors
 var _sprite: AnimatedSprite2D
@@ -90,6 +105,15 @@ var _hitbox_shape: RectangleShape2D
 var _animation := ""
 var _dust: AnimatedSprite2D
 var _death_timer := 0.0
+
+
+static func create(character: CharacterStats) -> Player:
+	var player := Player.new()
+	player.stats = character
+	player.width_radius = character.width_radius
+	player.height_radius = character.height_radius
+	player.push_radius = character.push_radius
+	return player
 
 
 func _ready() -> void:
@@ -105,7 +129,7 @@ func _ready() -> void:
 # construction
 # --------------------------------------------------------------------------- #
 func _build_sprite() -> void:
-	var sheet: Texture2D = load("res://assets/sprites/player.png")
+	var sheet: Texture2D = load(stats.sprite_sheet())
 	var frames := SpriteFrames.new()
 	frames.remove_animation("default")
 	var layout := {
@@ -120,6 +144,10 @@ func _build_sprite() -> void:
 		"hurt": [18],
 		"dead": [19],
 		"spring": [20],
+		"fly": [22, 23],
+		"glide": [24],
+		"climb": [25, 26],
+		"hammer": [27, 28],
 	}
 	for anim_name in layout:
 		frames.add_animation(anim_name)
@@ -173,6 +201,27 @@ func _build_hitbox() -> void:
 func _update_hitbox() -> void:
 	# SPG: the damage box is narrower than the terrain sensors (8 x height)
 	_hitbox_shape.size = Vector2(16.0, height_radius * 2.0 - 6.0)
+	_hitbox.position = Vector2.ZERO
+
+
+## Widen the damage box, for moves that reach past the body.
+func set_hitbox_width(width: float, offset_x: float) -> void:
+	_hitbox_shape.size = Vector2(width, height_radius * 2.0 - 6.0)
+	_hitbox.position = Vector2(offset_x, 0.0)
+
+
+func refresh_hitbox() -> void:
+	_update_hitbox()
+
+
+func hitbox_size() -> Vector2:
+	return _hitbox_shape.size
+
+
+## Is there a wall within push range on `side`? Used by the glide/climb ability.
+func wall_ahead(side: float) -> bool:
+	var hit := _sensors.wall_hit(side, 0.0)
+	return not hit.is_empty() and float(hit["distance"]) <= push_radius + 1.0
 
 
 # --------------------------------------------------------------------------- #
@@ -196,6 +245,8 @@ func _physics_process(delta: float) -> void:
 			_step_air(dt, true)
 		State.SPINDASH:
 			_step_spindash(dt)
+		State.CLIMB:
+			Abilities.step_climb(self, dt)
 		_:
 			if grounded:
 				_step_ground(dt)
@@ -235,7 +286,7 @@ func _step_ground(dt: float) -> void:
 	# --- start a spindash or a roll ---------------------------------------- #
 	if down_input and not rolling:
 		if absf(ground_speed) < ROLL_MIN_SPEED:
-			if Input.is_action_just_pressed("jump"):
+			if stats.can_spindash and Input.is_action_just_pressed("jump"):
 				_begin_spindash()
 				return
 		else:
@@ -282,26 +333,26 @@ func _step_ground(dt: float) -> void:
 
 
 func acceleration() -> float:
-	return SHOES_ACC if shoes > 0 else ACC
+	return SHOES_ACC if shoes > 0 else stats.acceleration
 
 
 func top_speed() -> float:
-	return SHOES_TOP if shoes > 0 else TOP
+	return SHOES_TOP if shoes > 0 else stats.top_speed
 
 
 func friction() -> float:
-	return SHOES_FRC if shoes > 0 else FRC
+	return SHOES_FRC if shoes > 0 else stats.friction
 
 
 func air_acceleration() -> float:
-	return SHOES_AIR_ACC if shoes > 0 else AIR_ACC
+	return SHOES_AIR_ACC if shoes > 0 else stats.air_acceleration
 
 
 func _apply_run_input(axis: float, dt: float) -> void:
 	var top := top_speed()
 	if axis > 0.0:
 		if ground_speed < 0.0:
-			ground_speed += DEC * dt
+			ground_speed += stats.deceleration * dt
 			if ground_speed >= 0.0:
 				ground_speed = 0.5  # SPG: braking through zero snaps to 0.5
 		elif ground_speed < top:
@@ -309,7 +360,7 @@ func _apply_run_input(axis: float, dt: float) -> void:
 		facing = 1
 	elif axis < 0.0:
 		if ground_speed > 0.0:
-			ground_speed -= DEC * dt
+			ground_speed -= stats.deceleration * dt
 			if ground_speed <= 0.0:
 				ground_speed = -0.5
 		elif ground_speed > -top:
@@ -323,21 +374,24 @@ func _apply_run_input(axis: float, dt: float) -> void:
 func _apply_roll_input(axis: float, dt: float) -> void:
 	# rolling cannot accelerate, only brake
 	if axis > 0.0 and ground_speed < 0.0:
-		ground_speed += DEC_ROLL * dt
+		ground_speed += stats.roll_deceleration * dt
 	elif axis < 0.0 and ground_speed > 0.0:
-		ground_speed -= DEC_ROLL * dt
-	var friction := minf(absf(ground_speed), FRC_ROLL * dt)
-	ground_speed -= friction * signf(ground_speed)
-	ground_speed = clampf(ground_speed, -TOP_ROLL, TOP_ROLL)
+		ground_speed -= stats.roll_deceleration * dt
+	var drag := minf(absf(ground_speed), stats.roll_friction * dt)
+	ground_speed -= drag * signf(ground_speed)
+	ground_speed = clampf(ground_speed, -stats.roll_top_speed, stats.roll_top_speed)
 
 
 func _jump() -> void:
 	var normal := Vector2(sin(ground_angle), -cos(ground_angle))
-	velocity += normal * JUMP_FORCE
+	velocity += normal * stats.jump_force
 	grounded = false
 	jumping = true
 	pushing = false
 	ground_angle = 0.0
+	air_move = AirMove.NONE
+	air_move_timer = 0
+	ability_spent = false
 	_set_size(true, false)
 	Sfx.play("jump")
 
@@ -382,7 +436,13 @@ func _step_air(dt: float, hurt: bool) -> void:
 		if velocity.y < 0.0 and velocity.y > -AIR_DRAG_LIMIT:
 			velocity.x *= pow(AIR_DRAG, dt)
 
-	velocity.y += GRV * dt
+		# the one hook every special move hangs off: jump, in mid-air
+		if control_enabled and Input.is_action_just_pressed("jump"):
+			Abilities.trigger(self)
+
+	# an active air move may take over vertical motion entirely
+	if not Abilities.step(self, dt):
+		velocity.y += stats.gravity * dt
 	velocity.y = minf(velocity.y, MAX_SPEED)
 	velocity.x = clampf(velocity.x, -MAX_SPEED, MAX_SPEED)
 
@@ -416,6 +476,7 @@ func _land(hit: Dictionary) -> void:
 	ground_angle = _angle_from_normal(hit["normal"])
 	grounded = true
 	jumping = false
+	Abilities.on_landed(self)
 	if state == State.HURT:
 		state = State.NORMAL
 		ground_speed = 0.0
@@ -511,7 +572,7 @@ func _check_walls() -> void:
 		var hit := _sensors.wall_hit(side, angle)
 		if hit.is_empty():
 			continue
-		var overlap: float = PUSH_RADIUS - float(hit["distance"])
+		var overlap: float = push_radius - float(hit["distance"])
 		if overlap <= 0.0:
 			continue
 		position -= Vector2.RIGHT.rotated(angle) * side * overlap
@@ -573,8 +634,8 @@ func _set_rolling(value: bool) -> void:
 
 
 func _set_size(ball: bool, compensate: bool) -> void:
-	var new_height := HEIGHT_RADIUS_ROLL if ball else HEIGHT_RADIUS
-	var new_width := WIDTH_RADIUS_ROLL if ball else WIDTH_RADIUS
+	var new_height: float = stats.roll_height_radius if ball else stats.height_radius
+	var new_width: float = stats.roll_width_radius if ball else stats.width_radius
 	if compensate and not is_equal_approx(new_height, height_radius):
 		# keep the feet planted when the hitbox grows or shrinks
 		position += Vector2.DOWN.rotated(ground_angle) * (height_radius - new_height)
@@ -616,13 +677,19 @@ func launch(direction: Vector2, power: float) -> void:
 ## Bounce off a destroyed badnik or a monitor.
 func bounce() -> void:
 	if Input.is_action_pressed("jump"):
-		velocity.y = -JUMP_FORCE * 0.85
+		velocity.y = -stats.jump_force * 0.85
 	else:
 		velocity.y = -absf(velocity.y) * 0.6 - 1.5
 	grounded = false
 
 
 func is_attacking() -> bool:
+	if air_move == AirMove.FLY:
+		return false  # flying is travel, not an attack
+	if air_move == AirMove.DASH or air_move == AirMove.HAMMER:
+		return true
+	if air_move == AirMove.GLIDE:
+		return true   # a glide connects, as it classically does
 	return rolling or jumping or state == State.SPINDASH
 
 
@@ -681,7 +748,7 @@ func kill() -> void:
 
 
 func _step_dead(dt: float, delta: float) -> void:
-	velocity.y += GRV * dt
+	velocity.y += stats.gravity * dt
 	position += velocity * dt
 	_death_timer += delta
 	if _death_timer > 1.4:
@@ -746,11 +813,28 @@ func _animate(delta: float) -> void:
 			next = "dead"
 		State.HURT:
 			next = "hurt"
+		State.CLIMB:
+			next = "climb"
+			var climbing := Input.is_action_pressed("look_up") \
+				or Input.is_action_pressed("crouch")
+			rate = 1.6 if climbing else 0.0
 		State.SPINDASH:
 			next = "roll"
 			rate = 2.0 + spindash_charge * 0.35
 		_:
-			if rolling or jumping:
+			if air_move == AirMove.FLY:
+				next = "fly"
+				rate = 3.0
+			elif air_move == AirMove.GLIDE:
+				next = "glide"
+				rate = 1.0
+			elif air_move == AirMove.HAMMER:
+				next = "hammer"
+				rate = 2.4
+			elif air_move == AirMove.DASH:
+				next = "roll"
+				rate = 4.0
+			elif rolling or jumping:
 				next = "roll"
 				# SPG: roll animation speed is max(0, 4 - |gsp|) frames per frame
 				rate = clampf(speed / 4.0 + 0.6, 0.8, 4.0)
@@ -830,5 +914,5 @@ func _draw() -> void:
 		draw_line(origin, origin + down * (height_radius + 16.0), Color.LIME, 1.0)
 		draw_line(origin, origin - down * (height_radius + 16.0), Color.CYAN, 1.0)
 	for side in [-1.0, 1.0]:
-		draw_line(Vector2.ZERO, right * side * PUSH_RADIUS, Color.MAGENTA, 1.0)
+		draw_line(Vector2.ZERO, right * side * push_radius, Color.MAGENTA, 1.0)
 	draw_line(Vector2.ZERO, velocity * 4.0, Color.YELLOW, 1.0)

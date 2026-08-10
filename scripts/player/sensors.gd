@@ -85,7 +85,7 @@ func ceiling_hit(angle: float) -> Dictionary:
 ## Push sensors E and F: horizontal, from the player's centre.
 func wall_hit(side: float, angle: float) -> Dictionary:
 	var direction := Vector2.RIGHT.rotated(angle) * side
-	var hit := _cast(_player.global_position, direction, Player.PUSH_RADIUS + WALL_REACH)
+	var hit := _cast(_player.global_position, direction, _player.push_radius + WALL_REACH)
 	if hit.is_empty():
 		return {}
 	hit["distance"] = hit["travel"]

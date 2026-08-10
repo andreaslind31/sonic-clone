@@ -11,6 +11,8 @@ extends Node
 ## --tap   action@frame       press for a single frame
 ## --probe frame              print player state at that frame
 ## --warp  x                  start the player at this world x
+## --act   n                  build act n instead of the current one
+## --char  n                  play as roster entry n
 
 var _out := "/tmp/sonic"
 var _frames := 300
@@ -22,10 +24,17 @@ var _frame := 0
 var _zone: Node
 var _surface_probe := Vector3.ZERO  ## x from, x to, step; zero disables
 var _warp_x := -1.0                 ## drop the player in at this x before testing
+var _act := -1                      ## which act to build; -1 keeps the current one
+var _character := -1                ## which character to play; -1 keeps the current one
 
 
 func _ready() -> void:
 	_parse_args()
+	# Game.reset_run() has already run by now, so these have to be set after boot
+	if _act >= 0:
+		Game.act_index = _act
+	if _character >= 0:
+		Game.character_index = _character
 	_zone = load("res://scenes/main.tscn").instantiate()
 	add_child(_zone)
 	if _warp_x >= 0.0:
@@ -74,6 +83,10 @@ func _parse_args() -> void:
 				_surface_probe = Vector3(float(parts[0]), float(parts[1]), float(parts[2]))
 			"--warp":
 				_warp_x = float(value)
+			"--act":
+				_act = int(value)
+			"--char":
+				_character = int(value)
 
 
 func _physics_process(_delta: float) -> void:

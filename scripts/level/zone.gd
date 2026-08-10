@@ -47,8 +47,13 @@ func _ready() -> void:
 # --------------------------------------------------------------------------- #
 # terrain
 # --------------------------------------------------------------------------- #
+## Solid on both paths: only loop arcs are layer-specific.
+func _terrain_layers() -> int:
+	return Game.COLLISION_LAYERS.terrain_a | Game.COLLISION_LAYERS.terrain_b
+
+
 func _build_terrain() -> void:
-	var terrain_layers: int = Game.COLLISION_LAYERS.terrain_a | Game.COLLISION_LAYERS.terrain_b
+	var terrain_layers := _terrain_layers()
 	var cursor := Vector2(0.0, _ground_y)
 	var strip := PackedVector2Array([cursor])
 	var lowest := _ground_y
@@ -199,6 +204,21 @@ func _place_objects() -> void:
 			"platform":
 				add_child(MovingPlatform.create(where, entry.get("travel", Vector2(0, -64)),
 					float(entry.get("seconds", 3.0))))
+			"block":
+				# `y` is how high the block's top sits above the ground here
+				var width: float = float(entry.get("width", 96.0))
+				var height: float = float(entry.get("height", 20.0))
+				add_child(Block.create(
+					Vector2(x - width * 0.5, where.y), Vector2(width, height), _terrain_layers()
+				))
+			"wall":
+				# a climbable pillar standing on the ground
+				var wall_width: float = float(entry.get("width", 24.0))
+				var wall_height: float = float(entry.get("height", 120.0))
+				add_child(Block.create(
+					Vector2(x - wall_width * 0.5, ground - wall_height),
+					Vector2(wall_width, wall_height), _terrain_layers()
+				))
 			"checkpoint":
 				add_child(Checkpoint.create(where))
 			"goal":
@@ -206,7 +226,7 @@ func _place_objects() -> void:
 
 
 func _spawn_player() -> void:
-	player = Player.new()
+	player = Player.create(Characters.get_character(Game.character_index))
 	var start := Vector2(act.start_x, surface_y(act.start_x) - player.height_radius)
 	if Game.checkpoint_set:
 		start = Game.checkpoint
@@ -243,8 +263,37 @@ func _process(_delta: float) -> void:
 	if Input.is_action_just_pressed("debug"):
 		Game.debug_draw = not Game.debug_draw
 		player.queue_redraw()
+	for i in Characters.count():
+		if Input.is_action_just_pressed("select_%d" % (i + 1)):
+			_switch_character(i)
 	if not _finished and player.global_position.y > _bounds.end.y + DEATH_MARGIN:
 		player.kill()
+
+
+## Swap character mid-run, keeping position and momentum. Handy while playing and
+## essential for trying an ability without replaying the act to reach it.
+func _switch_character(index: int) -> void:
+	if index == Game.character_index or _finished or player.state == Player.State.DEAD:
+		return
+	Game.character_index = index
+	var replacement := Player.create(Characters.get_character(index))
+	replacement.position = player.position
+	replacement.z_index = player.z_index
+	replacement.ground_speed = player.ground_speed
+	replacement.velocity = player.velocity
+	replacement.ground_angle = player.ground_angle
+	replacement.grounded = player.grounded
+	replacement.facing = player.facing
+	replacement.start_path_layer = player.path_layer
+	var old := player
+	player = replacement
+	add_child(replacement)
+	replacement.died.connect(_on_player_died)
+	replacement.reached_goal.connect(_on_goal_reached)
+	camera.target = replacement
+	old.queue_free()
+	hud.refresh_character()
+	Sfx.play("checkpoint", 1.4)
 
 
 func _on_player_died() -> void:
@@ -281,6 +330,18 @@ func _on_goal_reached() -> void:
 	var ring_bonus := Game.rings * 100
 	Game.add_score(time_bonus + ring_bonus)
 	await get_tree().create_timer(1.6).timeout
+	var last_act := Game.act_index >= Acts.count() - 1
 	hud.show_results("TIME %s   RINGS %d   BONUS %d" % [
 		Game.time_string(), Game.rings, time_bonus + ring_bonus
-	])
+	], "" if last_act else "NEXT ACT...")
+	if last_act:
+		return
+	# roll on to the next act, keeping score, lives and the chosen character
+	await get_tree().create_timer(2.4).timeout
+	Game.act_index += 1
+	Game.checkpoint_set = false
+	Game.time_left = 0.0
+	Game.reset_life()
+	hud.fade_out(0.5)
+	await get_tree().create_timer(0.55).timeout
+	get_tree().reload_current_scene()

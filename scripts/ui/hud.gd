@@ -11,10 +11,14 @@ var _score_value: Label
 var _time_value: Label
 var _rings_value: Label
 var _lives_value: Label
+var _lives_icon: Sprite2D
+var _character_value: Label
 var _title_card: Control
 var _zone_label: Label
 var _act_label: Label
 var _results: Control
+var _results_summary: Label
+var _results_footer: Label
 var _fade: ColorRect
 
 
@@ -58,12 +62,16 @@ func _build_readout() -> void:
 	_time_value = values[1]
 	_rings_value = values[2]
 
-	var lives_icon := Art.still("res://assets/sprites/player.png", 40, 44, 0)
-	lives_icon.scale = Vector2(0.5, 0.5)
-	lives_icon.position = Vector2(MARGIN.x + 8, 224)
-	add_child(lives_icon)
+	_lives_icon = Art.still(Characters.get_character(Game.character_index).sprite_sheet(),
+		40, 44, 0)
+	_lives_icon.scale = Vector2(0.5, 0.5)
+	_lives_icon.position = Vector2(MARGIN.x + 8, 224)
+	add_child(_lives_icon)
 	_lives_value = _label("x3", VALUE_COLOUR, Vector2(MARGIN.x + 22, 218), 9)
 	add_child(_lives_value)
+	_character_value = _label("", LABEL_COLOUR, Vector2(MARGIN.x + 44, 218), 9)
+	add_child(_character_value)
+	refresh_character()
 
 
 func _build_title_card() -> void:
@@ -81,9 +89,16 @@ func _build_title_card() -> void:
 	_act_label.size.x = 424
 	_act_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_title_card.add_child(_act_label)
+	# roster: the number keys switch character at any time, so list them here
+	var y := 148
+	for i in Characters.count():
+		var character := Characters.get_character(i)
+		var line := "%d  %-6s %s" % [i + 1, character.display_name, character.blurb]
+		_title_card.add_child(_label(line, Color(0.82, 0.88, 1.0), Vector2(122, y), 8))
+		y += 11
 	_title_card.add_child(_label(
 		"ARROWS move   SPACE jump   DOWN+SPACE spindash",
-		Color(0.8, 0.85, 1.0), Vector2(52, 208), 8
+		Color(0.7, 0.76, 0.92), Vector2(52, 220), 8
 	))
 	add_child(_title_card)
 
@@ -96,8 +111,18 @@ func _build_results() -> void:
 	backdrop.color = Color(0.05, 0.1, 0.22, 0.9)
 	backdrop.size = Vector2(424, 240)
 	_results.add_child(backdrop)
-	_results.add_child(_label("ACT CLEARED", LABEL_COLOUR, Vector2(120, 70), 20))
-	_results.add_child(_label("PRESS R TO RUN IT AGAIN", VALUE_COLOUR, Vector2(112, 170), 10))
+	var heading := _label("ACT CLEARED", LABEL_COLOUR, Vector2(0, 70), 20)
+	heading.size.x = 424
+	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_results.add_child(heading)
+	_results_summary = _label("", VALUE_COLOUR, Vector2(0, 112), 11)
+	_results_summary.size.x = 424
+	_results_summary.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_results.add_child(_results_summary)
+	_results_footer = _label("", VALUE_COLOUR, Vector2(0, 168), 10)
+	_results_footer.size.x = 424
+	_results_footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_results.add_child(_results_footer)
 	add_child(_results)
 
 
@@ -113,6 +138,13 @@ func _process(_delta: float) -> void:
 	_time_value.text = Game.time_string()
 
 
+## Re-read the chosen character: the readout icon and name follow the switch.
+func refresh_character() -> void:
+	var character := Characters.get_character(Game.character_index)
+	_lives_icon.texture = load(character.sprite_sheet())
+	_character_value.text = character.display_name
+
+
 func show_title_card(zone_name: String, act_number: int, duration := 2.0) -> void:
 	_zone_label.text = zone_name
 	_act_label.text = "ZONE  ACT %d" % act_number
@@ -125,8 +157,9 @@ func show_title_card(zone_name: String, act_number: int, duration := 2.0) -> voi
 		_title_card.modulate.a = 1.0)
 
 
-func show_results(summary: String) -> void:
-	_results.add_child(_label(summary, VALUE_COLOUR, Vector2(110, 110), 11))
+func show_results(summary: String, footer := "") -> void:
+	_results_summary.text = summary
+	_results_footer.text = footer if footer != "" else "PRESS R TO RUN IT AGAIN"
 	_results.visible = true
 
 

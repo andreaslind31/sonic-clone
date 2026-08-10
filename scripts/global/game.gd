@@ -26,11 +26,17 @@ const BINDINGS := {
 	"jump": [KEY_SPACE, KEY_Z, KEY_J],
 	"restart": [KEY_R],
 	"debug": [KEY_F1],
+	"select_1": [KEY_1],
+	"select_2": [KEY_2],
+	"select_3": [KEY_3],
+	"select_4": [KEY_4],
+	"select_5": [KEY_5],
 }
 
 var score := 0
 var rings := 0
 var act_index := 0        ## which act in the Acts registry is being played
+var character_index := 0  ## chosen from the Characters roster; survives a game over
 var lives := 3
 var time_left := 0.0        ## seconds elapsed in the act
 var act_running := false

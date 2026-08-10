@@ -38,6 +38,7 @@ static func create(where: Vector2, which: Kind, patrol_range := 96.0) -> Badnik:
 
 
 func _build() -> void:
+	add_to_group("badnik")   # the air dash homes on this group
 	_origin = position
 	_shot_timer = SHOT_INTERVAL * randf()
 	var size := Vector2(32, 24)

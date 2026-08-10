@@ -81,14 +81,58 @@ DIRT_L = shift(DIRT, 26)
 SKY_TOP = PAL["sky_top"]
 SKY_BOT = PAL["sky_bottom"]
 
-# mascot colours (original art, tuned against the Kenney greens)
-BLUE = (36, 92, 216)
-BLUE_D = (22, 56, 150)
-BLUE_L = (86, 148, 244)
-SKIN = (247, 202, 148)
-SKIN_D = (208, 152, 98)
+# fixed object colours
 RED = (222, 48, 44)
 RED_D = (148, 24, 30)
+
+# Mascot colours. These are module globals rather than parameters because every
+# pose function reads them; use_palette() swaps the whole roster's look at once.
+CHARACTERS = {
+    "dash": {
+        "body": (36, 92, 216), "body_d": (22, 56, 150), "body_l": (86, 148, 244),
+        "skin": (247, 202, 148), "skin_d": (208, 152, 98),
+        "shoe": (222, 48, 44), "shoe_d": (148, 24, 30),
+        "quills": 2, "tuft": False,
+    },
+    "pip": {
+        "body": (246, 166, 46), "body_d": (186, 112, 20), "body_l": (255, 206, 116),
+        "skin": (255, 235, 200), "skin_d": (224, 190, 146),
+        "shoe": (232, 76, 60), "shoe_d": (150, 34, 32),
+        "quills": 3, "tuft": False,
+    },
+    "brawn": {
+        "body": (206, 52, 52), "body_d": (140, 26, 30), "body_l": (240, 108, 96),
+        "skin": (247, 202, 148), "skin_d": (208, 152, 98),
+        "shoe": (74, 176, 96), "shoe_d": (34, 108, 56),
+        "quills": 2, "tuft": False,
+    },
+    "volt": {
+        "body": (58, 58, 74), "body_d": (28, 28, 40), "body_l": (208, 62, 62),
+        "skin": (247, 202, 148), "skin_d": (208, 152, 98),
+        "shoe": (222, 48, 44), "shoe_d": (148, 24, 30),
+        "quills": 3, "tuft": False,
+    },
+    "rosa": {
+        "body": (238, 120, 178), "body_d": (172, 62, 118), "body_l": (255, 178, 214),
+        "skin": (247, 202, 148), "skin_d": (208, 152, 98),
+        "shoe": (216, 60, 92), "shoe_d": (140, 28, 52),
+        "quills": 2, "tuft": True,
+    },
+}
+
+MBODY = MBODY_D = MBODY_L = MSKIN = MSKIN_D = MSHOE = MSHOE_D = (0, 0, 0)
+MQUILLS = 2
+MTUFT = False
+
+
+def use_palette(slug):
+    """Point the mascot drawing globals at one character's colours."""
+    global MBODY, MBODY_D, MBODY_L, MSKIN, MSKIN_D, MSHOE, MSHOE_D, MQUILLS, MTUFT
+    pal = CHARACTERS[slug]
+    MBODY, MBODY_D, MBODY_L = pal["body"], pal["body_d"], pal["body_l"]
+    MSKIN, MSKIN_D = pal["skin"], pal["skin_d"]
+    MSHOE, MSHOE_D = pal["shoe"], pal["shoe_d"]
+    MQUILLS, MTUFT = pal["quills"], pal["tuft"]
 WHITE = (255, 255, 255)
 EYE = (30, 30, 66)
 INK = (14, 22, 56)
@@ -108,12 +152,13 @@ def rot(x, y, cx, cy, deg):
     return cx + dx * math.cos(a) - dy * math.sin(a), cy + dx * math.sin(a) + dy * math.cos(a)
 
 
-def shoe(c, x, y, deg=0.0, flat=False):
-    """Red sneaker with a white cuff, drawn centred on the ankle joint."""
+def shoe(c, x, y, deg=0.0, flat=False, colour=None):
+    """Sneaker with a white cuff, drawn centred on the ankle joint."""
+    colour = colour or MSHOE
     w, h = (11, 6) if not flat else (12, 5)
     pts = [(-w / 2, -h / 2), (w / 2 - 1, -h / 2), (w / 2 + 1, h / 2), (-w / 2 - 1, h / 2)]
     pts = [rot(x + px, y + py, x, y, deg) for px, py in pts]
-    c.poly(pts, RED)
+    c.poly(pts, colour)
     cuff = [(-w / 2 - 1, -h / 2 - 2), (-w / 2 + 3, -h / 2 - 2), (-w / 2 + 3, -h / 2 + 1), (-w / 2 - 1, -h / 2 + 1)]
     c.poly([rot(x + px, y + py, x, y, deg) for px, py in cuff], WHITE)
     sole = [(-w / 2 - 1, h / 2 - 1), (w / 2 + 1, h / 2 - 1), (w / 2 + 1, h / 2), (-w / 2 - 1, h / 2)]
@@ -121,22 +166,26 @@ def shoe(c, x, y, deg=0.0, flat=False):
 
 
 def quills(c, hx, hy, spread=0.0):
-    """Two swept-back quills. Drawn before the head so they sit behind it."""
-    c.poly([(hx - 7, hy - 5), (hx - 19 - spread, hy - 10), (hx - 8, hy + 2)], BLUE)
-    c.poly([(hx - 7, hy + 2), (hx - 20 - spread, hy + 6), (hx - 7, hy + 9)], BLUE)
-    c.poly([(hx - 8, hy - 4), (hx - 15 - spread, hy - 7), (hx - 9, hy)], BLUE_D)
+    """Swept-back quills, drawn before the head so they sit behind it."""
+    c.poly([(hx - 7, hy - 5), (hx - 19 - spread, hy - 10), (hx - 8, hy + 2)], MBODY)
+    c.poly([(hx - 7, hy + 2), (hx - 20 - spread, hy + 6), (hx - 7, hy + 9)], MBODY)
+    if MQUILLS >= 3:
+        c.poly([(hx - 6, hy - 8), (hx - 15 - spread, hy - 16), (hx - 8, hy - 5)], MBODY)
+    c.poly([(hx - 8, hy - 4), (hx - 15 - spread, hy - 7), (hx - 9, hy)], MBODY_D)
+    if MTUFT:
+        c.poly([(hx - 2, hy - 9), (hx - 6, hy - 17), (hx + 4, hy - 10)], MBODY_L)
 
 
 def head(c, hx, hy, eyes="open", squint=0.0, face=(0.0, 0.0)):
     quills(c, hx, hy)
-    c.poly([(hx - 3, hy - 8), (hx - 1, hy - 13), (hx + 3, hy - 7)], BLUE)  # ear
-    c.disc(hx, hy, 9.5, BLUE)
-    c.ring(hx, hy, 9.5, 7.5, BLUE_D, a0=30, a1=150)  # underside shading
+    c.poly([(hx - 3, hy - 8), (hx - 1, hy - 13), (hx + 3, hy - 7)], MBODY)  # ear
+    c.disc(hx, hy, 9.5, MBODY)
+    c.ring(hx, hy, 9.5, 7.5, MBODY_D, a0=30, a1=150)  # underside shading
     face_dx, face_dy = face
     mx, my = hx + 7 + face_dx, hy + 3 + face_dy
-    c.disc(mx, my, 5.5, SKIN)  # muzzle
+    c.disc(mx, my, 5.5, MSKIN)  # muzzle
     c.disc(mx + 3, my - 3, 2, INK)  # nose
-    c.ellipse(mx - 2, my + 3, 3, 1.6, SKIN_D)  # mouth line
+    c.ellipse(mx - 2, my + 3, 3, 1.6, MSKIN_D)  # mouth line
 
     # one merged eye shape (classic Genesis look) keeps the outline pass clean
     ex, ey = hx + 3 + face_dx, hy - 2 + face_dy
@@ -155,18 +204,18 @@ def head(c, hx, hy, eyes="open", squint=0.0, face=(0.0, 0.0)):
 
 
 def torso(c, x, y, rx=8.5, ry=7.5):
-    c.ellipse(x, y, rx, ry, BLUE)
-    c.ring(x, y, rx, rx - 2, BLUE_D, a0=20, a1=160)  # underside
-    c.ellipse(x + 4, y + 1, rx - 4.0, ry - 3.0, SKIN)  # chest/belly patch
+    c.ellipse(x, y, rx, ry, MBODY)
+    c.ring(x, y, rx, rx - 2, MBODY_D, a0=20, a1=160)  # underside
+    c.ellipse(x + 4, y + 1, rx - 4.0, ry - 3.0, MSKIN)  # chest/belly patch
 
 
 def arm(c, sx, sy, hx, hy):
-    c.capsule(sx, sy, hx, hy, 2.0, SKIN_D)
+    c.capsule(sx, sy, hx, hy, 2.0, MSKIN_D)
     c.disc(hx, hy, 2.6, WHITE)  # glove
 
 
 def leg(c, hx, hy, ax, ay):
-    c.capsule(hx, hy, ax, ay, 2.2, SKIN_D)
+    c.capsule(hx, hy, ax, ay, 2.2, MSKIN_D)
 
 
 def standing(eyes="open", walk=None, lean=0.0, arms="down", squint=0.0, face=(0.0, 0.0)):
@@ -213,11 +262,11 @@ def running(phase):
     c = Canvas(FRAME_W, FRAME_H)
     ox, oy = ORIGIN
     cy = oy + 13
-    c.ring(ox, cy, 7.5, 4.5, SKIN, a0=0, a1=360)
-    c.ring(ox, cy, 7.5, 5.5, SKIN_D, a0=40 + phase * 90, a1=200 + phase * 90)
+    c.ring(ox, cy, 7.5, 4.5, MSKIN, a0=0, a1=360)
+    c.ring(ox, cy, 7.5, 5.5, MSKIN_D, a0=40 + phase * 90, a1=200 + phase * 90)
     torso(c, ox - 1, oy + 5)
     head(c, ox + 2, oy - 11, "open", squint=0.45)
-    c.capsule(ox + 1, oy + 2, ox - 6 + (phase % 2) * 3, oy + 4, 2.0, SKIN_D)
+    c.capsule(ox + 1, oy + 2, ox - 6 + (phase % 2) * 3, oy + 4, 2.0, MSKIN_D)
     for i in range(2):
         sx, sy = rot(ox + 7.5, cy, ox, cy, phase * 90 + i * 180)
         shoe(c, sx, sy, 0, flat=True)
@@ -234,14 +283,14 @@ def rolling(phase):
         tip = rot(ox + 15, oy, ox, oy, a)
         l = rot(ox + 8, oy - 4, ox, oy, a)
         r = rot(ox + 8, oy + 4, ox, oy, a)
-        c.poly([tip, l, r], BLUE_D)
-    c.disc(ox, oy, 12, BLUE)
-    c.ring(ox, oy, 12, 8, BLUE_L, a0=base + 200, a1=base + 320)
+        c.poly([tip, l, r], MBODY_D)
+    c.disc(ox, oy, 12, MBODY)
+    c.ring(ox, oy, 12, 8, MBODY_L, a0=base + 200, a1=base + 320)
     for i in range(2):
         a = base * 2 + i * 180
         sx, sy = rot(ox + 8, oy, ox, oy, a)
         c.disc(sx, sy, 3.4, RED)
-        c.disc(*rot(ox + 4, oy, ox, oy, a), 2.4, SKIN)
+        c.disc(*rot(ox + 4, oy, ox, oy, a), 2.4, MSKIN)
     c.disc(ox - 2, oy - 3, 2, WHITE)  # glint
     return c
 
@@ -252,8 +301,8 @@ def crouching():
     ox, oy = ORIGIN
     shoe(c, ox - 6, oy + 19, 0)
     shoe(c, ox + 5, oy + 19, 0)
-    c.ellipse(ox, oy + 13, 9, 5.5, BLUE)
-    c.ellipse(ox + 4, oy + 14, 4.5, 3, SKIN)
+    c.ellipse(ox, oy + 13, 9, 5.5, MBODY)
+    c.ellipse(ox + 4, oy + 14, 4.5, 3, MSKIN)
     head(c, ox + 3, oy + 4, "shut", face=(0.0, 1.0))
     arm(c, ox + 4, oy + 12, ox + 9, oy + 16)
     return c
@@ -309,15 +358,95 @@ def springing():
     shoe(c, ox - 3, oy + 19, 0)
     leg(c, ox, oy + 12, ox + 3, oy + 17)
     shoe(c, ox + 4, oy + 19, 0)
-    c.ellipse(ox, oy + 6, 6, 9, BLUE)
-    c.ellipse(ox + 3, oy + 6, 3, 5, SKIN)
+    c.ellipse(ox, oy + 6, 6, 9, MBODY)
+    c.ellipse(ox + 3, oy + 6, 3, 5, MSKIN)
     head(c, ox, oy - 8, "shut")
     arm(c, ox + 3, oy + 1, ox + 6, oy - 6)
     arm(c, ox - 3, oy + 1, ox - 7, oy - 5)
     return c
 
 
-def build_player_sheet():
+def flying(phase):
+    """Hovering with a spinning rotor above the head."""
+    c = Canvas(FRAME_W, FRAME_H)
+    ox, oy = ORIGIN
+    span = 15 if phase % 2 == 0 else 7
+    c.ellipse(ox, oy - 20, span, 2.0, MSKIN_D)
+    c.ellipse(ox, oy - 20, span * 0.5, 1.4, MSKIN)
+    leg(c, ox - 1, oy + 11, ox - 4, oy + 16)
+    shoe(c, ox - 4, oy + 18, 0)
+    leg(c, ox - 1, oy + 11, ox + 5, oy + 16)
+    shoe(c, ox + 5, oy + 18, 0)
+    torso(c, ox - 1, oy + 6)
+    head(c, ox + 1, oy - 9, "open", squint=0.2)
+    arm(c, ox + 3, oy + 3, ox + 9, oy + 1)
+    arm(c, ox - 3, oy + 3, ox - 9, oy + 2)
+    return c
+
+
+def gliding():
+    """Arms spread wide, body pitched forward into the dive."""
+    c = Canvas(FRAME_W, FRAME_H)
+    ox, oy = ORIGIN
+    leg(c, ox - 2, oy + 8, ox - 9, oy + 13)
+    shoe(c, ox - 10, oy + 14, -24)
+    leg(c, ox - 2, oy + 8, ox + 4, oy + 14)
+    shoe(c, ox + 5, oy + 15, 18)
+    c.ellipse(ox - 1, oy + 3, 9.0, 6.5, MBODY)
+    c.ring(ox - 1, oy + 3, 9.0, 7.0, MBODY_D, a0=20, a1=160)
+    c.ellipse(ox + 3, oy + 4, 4.5, 3.5, MSKIN)
+    head(c, ox + 2, oy - 9, "open", squint=0.5)
+    # outstretched arms read as the glide silhouette
+    c.capsule(ox + 2, oy, ox + 15, oy - 4, 2.2, MSKIN_D)
+    c.disc(ox + 15, oy - 4, 2.6, WHITE)
+    c.capsule(ox - 3, oy + 1, ox - 15, oy - 3, 2.2, MSKIN_D)
+    c.disc(ox - 15, oy - 3, 2.6, WHITE)
+    return c
+
+
+def climbing(phase):
+    """Clinging to a wall on the right, one hand higher than the other."""
+    c = Canvas(FRAME_W, FRAME_H)
+    ox, oy = ORIGIN
+    lift = 3 if phase % 2 == 0 else -3
+    leg(c, ox - 1, oy + 11, ox + 4, oy + 15 - lift)
+    shoe(c, ox + 5, oy + 17 - lift, 8)
+    leg(c, ox - 1, oy + 11, ox + 3, oy + 17 + lift)
+    shoe(c, ox + 4, oy + 19 + lift, 8)
+    torso(c, ox - 2, oy + 6)
+    head(c, ox, oy - 9, "open", squint=0.3)
+    arm(c, ox + 2, oy + 1, ox + 8, oy - 8 + lift)
+    arm(c, ox + 1, oy + 3, ox + 7, oy + 2 - lift)
+    return c
+
+
+def hammering(phase):
+    """Mallet swing: overhead on the first frame, down and forward on the second."""
+    c = Canvas(FRAME_W, FRAME_H)
+    ox, oy = ORIGIN
+    leg(c, ox - 1, oy + 11, ox - 5, oy + 16)
+    shoe(c, ox - 5, oy + 18, 0)
+    leg(c, ox - 1, oy + 11, ox + 4, oy + 16)
+    shoe(c, ox + 4, oy + 18, 0)
+    torso(c, ox - 1, oy + 6)
+    head(c, ox + 1, oy - 9, "open", squint=0.4)
+    if phase == 0:
+        handle_end = (ox + 6, oy - 18)
+        head_pos = (ox + 8, oy - 21)
+    else:
+        handle_end = (ox + 16, oy + 2)
+        head_pos = (ox + 18, oy + 5)
+    c.capsule(ox + 3, oy + 2, handle_end[0], handle_end[1], 1.6, MSKIN_D)
+    c.ellipse(head_pos[0], head_pos[1], 6.0, 5.0, STEEL)
+    c.ring(head_pos[0], head_pos[1], 6.0, 4.0, STEEL_D, a0=0, a1=360)
+    c.disc(head_pos[0] - 2, head_pos[1] - 2, 1.4, WHITE)
+    arm(c, ox + 2, oy + 2, ox + 5, oy + 1)
+    return c
+
+
+def build_player_sheet(slug):
+    """One character's sheet: 11 columns, frame indices as used by player.gd."""
+    use_palette(slug)
     frames = [standing()]                                     # 0 idle
     frames += [standing(walk=i / 4.0) for i in range(4)]       # 1-4 walk
     frames += [running(i) for i in range(4)]                   # 5-8 run
@@ -331,6 +460,10 @@ def build_player_sheet():
     frames += [hurt(dead=True)]                                # 19
     frames += [springing()]                                    # 20
     frames += [standing(eyes="shut", arms="up")]                # 21 balance/idle alt
+    frames += [flying(0), flying(1)]                            # 22-23 fly
+    frames += [gliding()]                                       # 24 glide
+    frames += [climbing(0), climbing(1)]                        # 25-26 climb
+    frames += [hammering(0), hammering(1)]                      # 27-28 hammer
     for f in frames:
         f.outline(INK)
     return sheet(frames, columns=11)
@@ -417,14 +550,14 @@ def build_monitor():
             c.ellipse(16, 13, 6, 7, GOLD)
             c.ellipse(16, 13, 3.2, 4, (44, 52, 92))
         elif kind == "shoes":
-            shoe(c, 16, 14, 0, flat=True)
+            shoe(c, 16, 14, 0, flat=True, colour=RED)
             c.rect(9, 17, 23, 18, WHITE)
         elif kind == "shield":
             c.poly([(16, 5), (25, 10), (16, 22), (7, 10)], (90, 190, 255))
             c.poly([(16, 9), (21, 12), (16, 18), (11, 12)], WHITE)
         elif kind == "life":
-            c.disc(16, 12, 6, BLUE)
-            c.disc(19, 14, 3, SKIN)
+            c.disc(16, 12, 6, MBODY)
+            c.disc(19, 14, 3, MSKIN)
             c.disc(20, 11, 1.2, EYE)
         c.rect(4, 4, 27, 5, (120, 140, 200))
         c.outline(INK)
@@ -529,8 +662,8 @@ def build_goal():
         c.ellipse(24, 24, w, 15, (240, 240, 250) if i != 2 else STEEL_D)
         if w > 8:
             c.ellipse(24, 24, w - 2, 13, (60, 120, 220))
-            c.disc(24, 20, min(w - 4, 6), BLUE)
-            c.disc(26, 22, 3, SKIN)
+            c.disc(24, 20, min(w - 4, 6), MBODY)
+            c.disc(26, 22, 3, MSKIN)
             c.disc(27, 20, 1.2, EYE)
             c.rect(24 - w + 3, 30, 24 + w - 3, 33, WHITE)
         c.rect(14, 60, 33, 63, DIRT_D)
@@ -658,8 +791,11 @@ def main():
     for k, v in PAL.items():
         print(f"  {k:12s} {v}")
 
-    outputs = {
-        os.path.join(sprites, "player.png"): build_player_sheet(),
+    outputs = {}
+    for slug in CHARACTERS:
+        outputs[os.path.join(sprites, "player_%s.png" % slug)] = build_player_sheet(slug)
+    use_palette("dash")  # object art should not depend on who was generated last
+    outputs |= {
         os.path.join(sprites, "ring.png"): build_rings(),
         os.path.join(sprites, "ring_sparkle.png"): build_ring_sparkle(),
         os.path.join(sprites, "shot.png"): build_shot(),

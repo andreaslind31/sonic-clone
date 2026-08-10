@@ -39,10 +39,26 @@ func _run_all() -> void:
 		{"name": "loop is traversed, flips path layer, and exits", "fn": _test_loop},
 		{"name": "rings are collected and scored", "fn": _test_rings},
 		{"name": "sensors agree with the generated surface", "fn": _test_sensors},
+		{"name": "every character keeps the SPG defaults it does not override",
+			"fn": _test_character_defaults},
+		{"name": "flight climbs while jump is held, and runs out", "fn": _test_fly,
+			"character": 1},
+		{"name": "glide falls slowly and steers", "fn": _test_glide, "character": 2},
+		{"name": "air dash homes on a badnik and destroys it", "fn": _test_dash,
+			"character": 3},
+		{"name": "hammer widens the damage box for its swing", "fn": _test_hammer,
+			"character": 4},
+		{"name": "an ability is spent once per airtime", "fn": _test_ability_spend,
+			"character": 1},
+		{"name": "blocks are solid on every face", "fn": _test_block_faces},
+		{"name": "no act wall is taller than the roster can jump", "fn": _test_walls_passable},
+		{"name": "acts are registered and distinct", "fn": _test_act_registry},
+		{"name": "a wall can be climbed and pushed off", "fn": _test_wall_climb,
+			"character": 2},
 	]
 	for entry in suite:
 		_current = entry["name"]
-		var zone := await _fresh_zone()
+		var zone := await _fresh_zone(int(entry.get("character", 0)))
 		await (entry["fn"] as Callable).call(zone)
 		_release_all()
 		zone.queue_free()
@@ -69,9 +85,10 @@ func _fixture() -> ActData:
 	return act
 
 
-func _fresh_zone() -> Zone:
+func _fresh_zone(character := 0) -> Zone:
 	Game.reset_run()
 	Game.checkpoint_set = false
+	Game.character_index = character
 	var zone := Zone.new()
 	zone.act = _fixture()
 	zone.auto_restart = false
@@ -341,3 +358,261 @@ func _test_sensors(zone: Zone) -> void:
 			_check_near(hit["position"].y, zone.surface_y(x), 1.0,
 				"surface height at x = %.0f" % x)
 		x += 60.0
+
+
+# --------------------------------------------------------------------------- #
+# characters and abilities
+# --------------------------------------------------------------------------- #
+## The roster is defined by what it overrides, so anything it does not override
+## must still be the guide's number.
+func _test_character_defaults(_zone: Zone) -> void:
+	var reference := CharacterStats.new()
+	_check_near(reference.acceleration, Player.ACC, EPS, "default acceleration")
+	_check_near(reference.friction, Player.FRC, EPS, "default friction")
+	_check_near(reference.deceleration, Player.DEC, EPS, "default deceleration")
+	_check_near(reference.top_speed, Player.TOP, EPS, "default top speed")
+	_check_near(reference.gravity, Player.GRV, EPS, "default gravity")
+	_check_near(reference.jump_force, Player.JUMP_FORCE, EPS, "default jump force")
+	_check_near(reference.roll_friction, Player.FRC_ROLL, EPS, "default roll friction")
+	_check_near(reference.height_radius, Player.HEIGHT_RADIUS, EPS, "default height radius")
+	for i in Characters.count():
+		var stats := Characters.get_character(i)
+		_check(stats.slug != "", "character %d needs a slug" % i)
+		_check(ResourceLoader.exists(stats.sprite_sheet()),
+			"missing sheet for %s: %s" % [stats.display_name, stats.sprite_sheet()])
+
+
+func _test_fly(zone: Zone) -> void:
+	var player := zone.player
+	_check(player.stats.ability == CharacterStats.Ability.FLY, "expected the flier")
+	await _place(zone, 400.0)
+	_press("jump")
+	_check(await _wait_airborne(player), "expected a jump")
+	_release("jump")
+	await _frames(6)
+	_press("jump")  # second press starts flight
+	await _frames(4)
+	_check(player.air_move == Player.AirMove.FLY, "expected to be flying")
+	var height_before: float = player.global_position.y
+	await _frames(30)
+	_check(player.global_position.y < height_before,
+		"expected to climb while flying, went from %.1f to %.1f" % [
+			height_before, player.global_position.y])
+	_check(not player.is_attacking(), "flight should not count as an attack")
+	# flight has a time limit; burn through it and confirm it drops
+	player.air_move_timer = 2
+	await _frames(4)
+	_check(player.air_move == Player.AirMove.NONE, "expected flight to run out")
+	_release("jump")
+
+
+func _test_glide(zone: Zone) -> void:
+	var player := zone.player
+	_check(player.stats.ability == CharacterStats.Ability.GLIDE, "expected the glider")
+	_check_near(player.stats.jump_force, 6.0, EPS, "the heavier character jumps lower")
+	await _place(zone, 400.0)
+	_press("move_right")
+	await _frames(30)
+	_press("jump")
+	_check(await _wait_airborne(player), "expected a jump")
+	await _frames(4)
+	_release("jump")
+	await get_tree().physics_frame
+	_press("jump")  # second press opens the glide
+	await _frames(6)
+	_check(player.air_move == Player.AirMove.GLIDE, "expected to be gliding")
+	await _frames(20)
+	_check(player.velocity.y <= player.stats.glide_fall + EPS,
+		"glide descent should settle at %.2f, got %.3f" % [
+			player.stats.glide_fall, player.velocity.y])
+	_check(player.velocity.x > 0.0, "expected to keep moving forward in a glide")
+	_check(player.is_attacking(), "a glide should connect with badniks")
+	_release("jump")
+	_release("move_right")
+	await _frames(4)
+	_check(player.air_move == Player.AirMove.NONE, "releasing jump should end the glide")
+
+
+func _test_dash(zone: Zone) -> void:
+	var player := zone.player
+	_check(player.stats.ability == CharacterStats.Ability.AIR_DASH, "expected the striker")
+	await _place(zone, 400.0)
+	# put a badnik just ahead and slightly above the jump arc
+	var target := Badnik.create(Vector2(470.0, zone.surface_y(470.0) - 40.0),
+		Badnik.Kind.BUZZER, 0.0)
+	zone.add_child(target)
+	await _frames(2)
+	_press("jump")
+	_check(await _wait_airborne(player), "expected a jump")
+	_release("jump")
+	await _frames(4)
+	_press("jump")
+	await _frames(3)
+	_check(player.air_move == Player.AirMove.DASH, "expected to be dashing")
+	_check(player.is_attacking(), "a dash should count as an attack")
+	_check(player.velocity.x > 0.0, "expected the dash to carry us at the target")
+	_release("jump")
+	await _frames(30)
+	_check(not is_instance_valid(target) or target.is_queued_for_deletion(),
+		"expected the dash to destroy the badnik it homed on")
+
+
+func _test_hammer(zone: Zone) -> void:
+	var player := zone.player
+	_check(player.stats.ability == CharacterStats.Ability.HAMMER, "expected the smasher")
+	_check(not player.stats.can_spindash, "the smasher trades the spindash away")
+	await _place(zone, 400.0)
+	var normal_width: float = player.hitbox_size().x
+	_press("jump")
+	_check(await _wait_airborne(player), "expected a jump")
+	_release("jump")
+	await _frames(4)
+	_press("jump")
+	await _frames(3)
+	_check(player.air_move == Player.AirMove.HAMMER, "expected a hammer swing")
+	_check(player.hitbox_size().x > normal_width,
+		"the swing should reach further than %.1f, got %.1f" % [
+			normal_width, player.hitbox_size().x])
+	_check(player.is_attacking(), "the swing should count as an attack")
+	_release("jump")
+	await _frames(30)
+	_check_near(player.hitbox_size().x, normal_width, EPS, "hitbox width after the swing")
+
+
+func _test_ability_spend(zone: Zone) -> void:
+	var player := zone.player
+	await _place(zone, 400.0)
+	_press("jump")
+	_check(await _wait_airborne(player), "expected a jump")
+	_release("jump")
+	await _frames(4)
+	_press("jump")
+	await _frames(3)
+	_release("jump")
+	_check(player.ability_spent, "the ability should be marked spent in mid-air")
+	# land, and the ability should be available again
+	await _frames(120)
+	_check(player.grounded, "expected to land")
+	_check(not player.ability_spent, "landing should refresh the ability")
+
+
+# --------------------------------------------------------------------------- #
+# block geometry
+# --------------------------------------------------------------------------- #
+## A block has to behave as ground on top, ceiling below and wall at the sides,
+## because that is the whole reason it exists.
+func _test_block_faces(zone: Zone) -> void:
+	var ground := zone.surface_y(600.0)
+	var top := ground - 80.0
+	zone.add_child(Block.create(Vector2(560.0, top), Vector2(120.0, 24.0),
+		Game.COLLISION_LAYERS.terrain_a | Game.COLLISION_LAYERS.terrain_b))
+	await _frames(2)
+	var player := zone.player
+
+	# land on it from above
+	player.global_position = Vector2(600.0, top - 60.0)
+	player.velocity = Vector2(0.0, 2.0)
+	player.grounded = false
+	await _frames(60)
+	_check(player.grounded, "expected to land on top of the block")
+	_check_near(player.global_position.y + player.height_radius, top, 2.0,
+		"feet should rest on the block top")
+
+	# the underside stops an upward jump
+	player.global_position = Vector2(600.0, top + 24.0 + player.height_radius + 30.0)
+	player.velocity = Vector2(0.0, -6.0)
+	player.grounded = false
+	player.ground_speed = 0.0
+	await _frames(30)
+	_check(player.global_position.y > top + 24.0,
+		"expected the block underside to block the rise, got y = %.1f (block bottom %.1f)" % [
+			player.global_position.y, top + 24.0])
+
+	# the side stops a run
+	player.velocity = Vector2.ZERO
+	player.grounded = false
+	player.global_position = Vector2(560.0 - player.push_radius - 1.0, top + 12.0)
+	await get_tree().physics_frame
+	_check(player.wall_ahead(1.0), "expected the block side to read as a wall")
+
+
+func _test_wall_climb(zone: Zone) -> void:
+	var player := zone.player
+	_check(player.stats.ability == CharacterStats.Ability.GLIDE, "expected the glider")
+	var ground := zone.surface_y(700.0)
+	zone.add_child(Block.create(Vector2(700.0, ground - 140.0), Vector2(24.0, 140.0),
+		Game.COLLISION_LAYERS.terrain_a | Game.COLLISION_LAYERS.terrain_b))
+	await _frames(2)
+
+	# glide into the wall from the left
+	player.global_position = Vector2(640.0, ground - 90.0)
+	player.grounded = false
+	player.facing = 1
+	player.velocity = Vector2(2.0, 0.0)
+	player.ability_spent = false
+	await get_tree().physics_frame
+	_press("jump")
+	await _frames(40)
+	_check(player.state == Player.State.CLIMB,
+		"expected to grab the wall, state is %d at x = %.1f" % [
+			player.state, player.global_position.x])
+	if player.state == Player.State.CLIMB:
+		var height_before: float = player.global_position.y
+		_press("look_up")
+		await _frames(30)
+		_check(player.global_position.y < height_before,
+			"expected to climb upward, went %.1f -> %.1f" % [
+				height_before, player.global_position.y])
+		_release("look_up")
+		_release("jump")
+		await get_tree().physics_frame
+		_press("jump")
+		await _frames(6)
+		_check(player.state == Player.State.NORMAL, "expected to push off the wall")
+		_check(player.velocity.x < 0.0, "expected to be pushed away from the wall")
+	_release("jump")
+
+
+## Level-data guard: a wall the shortest jump cannot clear would soft-lock any
+## character without a climb or a flight, so no act may contain one.
+func _test_walls_passable(_zone: Zone) -> void:
+	var weakest := INF
+	var gravity := 0.0
+	for i in Characters.count():
+		var stats := Characters.get_character(i)
+		weakest = minf(weakest, stats.jump_force)
+		gravity = maxf(gravity, stats.gravity)
+	# peak height of a jump: v^2 / 2g
+	var reach := weakest * weakest / (2.0 * gravity)
+	for index in Acts.count():
+		var act := Acts.get_act(index)
+		for entry in act.objects:
+			if entry.get("what", "") != "wall":
+				continue
+			var height: float = float(entry.get("height", 120.0))
+			_check(height < reach * 0.9,
+				"%s act %d has a %.0fpx wall at x = %.0f, but the weakest jump only reaches %.0fpx" % [
+					act.zone_name, act.act_number, height, float(entry["x"]), reach])
+
+
+func _test_act_registry(_zone: Zone) -> void:
+	_check(Acts.count() >= 2, "expected at least two acts")
+	var seen := {}
+	for index in Acts.count():
+		var act := Acts.get_act(index)
+		_check(act.layout.size() > 0, "act %d has no layout" % index)
+		_check(act.objects.size() > 0, "act %d has no objects" % index)
+		var has_goal := false
+		for entry in act.objects:
+			if entry.get("what", "") == "goal":
+				has_goal = true
+		_check(has_goal, "act %d has no goal, so it cannot be finished" % index)
+		var key := "%s-%d" % [act.zone_name, act.act_number]
+		_check(not seen.has(key), "two acts share the title %s" % key)
+		seen[key] = true
+		# every object must name a placement the builder understands
+		const KNOWN := ["ring_line", "ring_arc", "monitor", "spring", "spikes", "badnik",
+			"platform", "checkpoint", "goal", "block", "wall"]
+		for entry in act.objects:
+			_check(KNOWN.has(entry.get("what", "")),
+				"act %d has an unknown object kind: %s" % [index, entry.get("what", "?")])
