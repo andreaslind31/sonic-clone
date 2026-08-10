@@ -283,6 +283,73 @@ def music_zone():
     return track / peak * 0.8 if peak else track
 
 
+# --------------------------------------------------------------------------- #
+# boss music: shorter, faster, minor key
+# --------------------------------------------------------------------------- #
+def music_boss():
+    bpm = 176.0
+    beat = 60.0 / bpm
+    step = beat / 4.0
+
+    bass_pattern = [
+        "A1 - A2 - A1 - A2 - F1 - F2 - F1 - F2 -",
+        "G1 - G2 - G1 - G2 - E1 - E2 - E1 - E2 -",
+        "A1 - A2 - A1 - A2 - C2 - C3 - C2 - C3 -",
+        "D2 - D3 - A1 - A2 - E2 - E3 - E2 - E3 -",
+    ]
+    lead_pattern = [
+        "A4 - C5 - E5 - C5 - A4 - - - F4 - A4 - C5 - - -",
+        "G4 - B4 - D5 - B4 - G4 - - - E4 - G4 - B4 - - -",
+        "A4 - C5 - E5 - A5 - G5 - E5 - C5 - A4 - - - - -",
+        "D5 - - C5 B4 - A4 - E5 - - D5 C5 - - -",
+    ]
+    stab_pattern = [
+        "A3 - - - A3 - - - F3 - - - F3 - - -",
+        "G3 - - - G3 - - - E3 - - - E3 - - -",
+        "A3 - - - A3 - - - C4 - - - C4 - - -",
+        "D4 - - - A3 - - - E4 - - - E4 - - -",
+    ]
+
+    total = int(RATE * step * 16 * len(bass_pattern)) + int(RATE * 0.4)
+    track = np.zeros(total)
+    rng = np.random.default_rng(23)
+
+    def lay(pattern, voice, gain, duty=0.5, length=1.0):
+        for bar, line in enumerate(pattern):
+            for i, token in enumerate(line.split()[:16]):
+                if token == "-":
+                    continue
+                start = int(RATE * step * (bar * 16 + i))
+                dur = step * length
+                f = freq(token)
+                if voice == "square":
+                    data = env(square(f, dur, duty), attack=0.003,
+                               decay=dur * 0.2, sustain=0.7, release=dur * 0.3)
+                else:
+                    data = env(triangle(f, dur), attack=0.004,
+                               decay=dur * 0.2, sustain=0.7, release=dur * 0.35)
+                nonlocal track
+                track = at(track, data * gain, start)
+
+    lay(bass_pattern, "triangle", 0.36, length=1.5)
+    lay(lead_pattern, "square", 0.24, duty=0.5, length=1.5)
+    lay(stab_pattern, "square", 0.12, duty=0.12, length=2.6)
+
+    for bar in range(len(bass_pattern)):
+        for b in range(4):
+            base = int(RATE * step * (bar * 16 + b * 4))
+            track = at(track, env(sine(104, 0.12, sweep=-360), attack=0.002,
+                                  release=0.09) * 0.5, base)
+            track = at(track, env(noise(0.10, rng), attack=0.001, release=0.08) * 0.25,
+                       base + int(RATE * step * 2))
+            for eighth in range(4):
+                track = at(track, env(noise(0.03, rng), attack=0.001, release=0.026) * 0.07,
+                           base + int(RATE * step * eighth))
+
+    peak = np.max(np.abs(track))
+    return track / peak * 0.82 if peak else track
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     effects = {
@@ -300,6 +367,7 @@ def main():
         "skid.wav": sfx_skid(),
         "goal.wav": sfx_goal(),
         "music_zone.wav": music_zone(),
+        "music_boss.wav": music_boss(),
     }
     for name, samples in effects.items():
         write_wav(name, samples)

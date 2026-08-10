@@ -54,6 +54,8 @@ func _run_all() -> void:
 		{"name": "no act wall is taller than the roster can jump",
 			"fn": _test_walls_passable, "zone": false},
 		{"name": "acts are registered and distinct", "fn": _test_act_registry, "zone": false},
+		{"name": "no act object is stranded over a gap or off a block",
+			"fn": _test_act_placement, "zone": false},
 		{"name": "the game boots into the menu, not into an act",
 			"fn": _test_boots_to_menu, "zone": false},
 		{"name": "the menu picks a character and starts the game",
@@ -61,6 +63,10 @@ func _run_all() -> void:
 		{"name": "character cannot be switched mid-run", "fn": _test_no_mid_run_switch,
 			"character": 2},
 		{"name": "escape pauses and resumes, freezing the player", "fn": _test_pause},
+		{"name": "boss wakes in its arena and locks the camera", "fn": _test_boss_wakes, "zone": false},
+		{"name": "boss takes hits only from an attacking player", "fn": _test_boss_damage, "zone": false},
+		{"name": "eight hits finish the boss and drop the capsule", "fn": _test_boss_defeat, "zone": false},
+		{"name": "the wrecking ball hurts even an attacking player", "fn": _test_boss_ball, "zone": false},
 		{"name": "leaving the pause menu never leaves the tree paused",
 			"fn": _test_pause_exits_clean},
 		{"name": "a wall can be climbed and pushed off", "fn": _test_wall_climb,
@@ -620,17 +626,19 @@ func _test_act_registry(_zone: Zone) -> void:
 		var act := Acts.get_act(index)
 		_check(act.layout.size() > 0, "act %d has no layout" % index)
 		_check(act.objects.size() > 0, "act %d has no objects" % index)
-		var has_goal := false
+		# an act ends either at a signpost or at a boss (whose capsule clears it)
+		var has_exit := false
 		for entry in act.objects:
-			if entry.get("what", "") == "goal":
-				has_goal = true
-		_check(has_goal, "act %d has no goal, so it cannot be finished" % index)
+			if entry.get("what", "") in ["goal", "boss"]:
+				has_exit = true
+		_check(has_exit, "act %d has neither a goal nor a boss, so it cannot be finished"
+			% index)
 		var key := "%s-%d" % [act.zone_name, act.act_number]
 		_check(not seen.has(key), "two acts share the title %s" % key)
 		seen[key] = true
 		# every object must name a placement the builder understands
 		const KNOWN := ["ring_line", "ring_arc", "monitor", "spring", "spikes", "badnik",
-			"platform", "checkpoint", "goal", "block", "wall"]
+			"platform", "checkpoint", "goal", "block", "wall", "boss"]
 		for entry in act.objects:
 			_check(KNOWN.has(entry.get("what", "")),
 				"act %d has an unknown object kind: %s" % [index, entry.get("what", "?")])
@@ -751,3 +759,230 @@ func _test_pause_exits_clean(zone: Zone) -> void:
 			"option %d (%s) left the tree paused" % [option, PauseMenu.OPTIONS[option]])
 		_check(not zone.pause_menu.is_paused(),
 			"option %d left the menu thinking it is still up" % option)
+
+
+# --------------------------------------------------------------------------- #
+# boss
+# --------------------------------------------------------------------------- #
+## The boss lives in act 3, so these build that act rather than the fixture.
+func _boss_zone() -> Zone:
+	Game.reset_run()
+	Game.checkpoint_set = false
+	var zone := Zone.new()
+	zone.act = Acts.canyon_act_3()
+	zone.auto_restart = false
+	add_child(zone)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	return zone
+
+
+func _find_boss(zone: Zone) -> Boss:
+	for node in zone.get_children():
+		if node is Boss:
+			return node
+	return null
+
+
+func _test_boss_wakes(_fixture: Zone) -> void:
+	var zone := await _boss_zone()
+	var boss := _find_boss(zone)
+	_check(boss != null, "act 3 should contain a boss")
+	if boss == null:
+		zone.queue_free()
+		return
+	_check(boss.phase == Boss.Phase.WAITING, "the boss should wait until approached")
+	var wide_limit := zone.camera.limit_right
+	# walk the player into the arena
+	zone.player.global_position = Vector2(boss.position.x - 150.0, boss.position.y + 80.0)
+	await _frames(20)
+	_check(boss.phase != Boss.Phase.WAITING, "the boss should wake once inside the arena")
+	_check(zone.camera.limit_right < wide_limit,
+		"the camera should be pinned to the arena, right limit is still %d"
+			% zone.camera.limit_right)
+	_check(zone.camera.limit_left > int(boss.position.x) - 400,
+		"the camera's left limit should seal the arena")
+	zone.queue_free()
+	await get_tree().process_frame
+
+
+func _test_boss_damage(_fixture: Zone) -> void:
+	var zone := await _boss_zone()
+	var boss := _find_boss(zone)
+	if boss == null:
+		zone.queue_free()
+		return
+	var player := zone.player
+	Game.add_rings(5)
+	player.global_position = Vector2(boss.position.x - 150.0, boss.position.y + 80.0)
+	await _frames(20)
+
+	# walking into the pod without attacking costs rings, not boss health
+	var hp_before: int = boss.hp
+	_reset_player(player, boss.global_position + Vector2(0, 10))
+	await _frames(4)
+	_check(boss.hp == hp_before, "an unattacking touch should not hurt the boss")
+	_check(Game.rings < 5, "an unattacking touch should cost the player rings")
+
+	# attacking into it does damage. Step clear first: area_entered only fires on
+	# entry, so re-touching from inside the pod would raise nothing. Park inside
+	# the arena rather than below it, or the fall would kill the player instead.
+	_reset_player(player, Vector2(boss.position.x - 160.0, boss.position.y + 80.0))
+	await _frames(6)
+	# attack as a jump, not a standing roll: a roll with no ground speed uncurls
+	# on the same frame, which is correct SPG behaviour and would be an
+	# impossible way to reach the pod in real play
+	_reset_player(player, boss.global_position + Vector2(0, 10))
+	player.grounded = false
+	player.jumping = true
+	player.velocity = Vector2(0.0, -1.0)
+	await _frames(4)
+	_check(boss.hp < hp_before, "jumping into the pod should hurt it, hp is %d" % boss.hp)
+	zone.queue_free()
+	await get_tree().process_frame
+
+
+## Drop the player at `where` in a clean, unhurt, non-attacking state.
+func _reset_player(player: Player, where: Vector2) -> void:
+	player.state = Player.State.NORMAL
+	player.invuln = 0
+	player.rolling = false
+	player.jumping = false
+	player.velocity = Vector2.ZERO
+	player.ground_speed = 0.0
+	player.global_position = where
+
+
+func _test_boss_defeat(_fixture: Zone) -> void:
+	var zone := await _boss_zone()
+	var boss := _find_boss(zone)
+	if boss == null:
+		zone.queue_free()
+		return
+	var player := zone.player
+	player.global_position = Vector2(boss.position.x - 150.0, boss.position.y + 80.0)
+	await _frames(20)
+	_check(boss.hp == Boss.MAX_HP, "the boss should start on full health")
+
+	for i in Boss.MAX_HP:
+		boss.take_hit(player)
+		await get_tree().physics_frame
+	_check(boss.phase == Boss.Phase.DYING or boss.phase == Boss.Phase.DONE,
+		"%d hits should finish the boss" % Boss.MAX_HP)
+
+	# the death sequence runs, then the capsule appears
+	await _frames(int(Boss.DEATH_SECONDS * 60.0) + 20)
+	var capsule: Capsule = null
+	for node in zone.get_children():
+		if node is Capsule:
+			capsule = node
+	_check(capsule != null, "beating the boss should drop the capsule")
+	if capsule != null:
+		capsule.call("_on_switch_hit", _player_hitbox(player))
+		await _frames(4)
+		_check(player.state == Player.State.GOAL, "opening the capsule should clear the act")
+	zone.queue_free()
+	await get_tree().process_frame
+
+
+func _test_boss_ball(_fixture: Zone) -> void:
+	var zone := await _boss_zone()
+	var boss := _find_boss(zone)
+	if boss == null:
+		zone.queue_free()
+		return
+	var player := zone.player
+	Game.add_rings(9)
+	player.global_position = Vector2(boss.position.x - 150.0, boss.position.y + 80.0)
+	await _frames(20)
+	var hp_before: int = boss.hp
+	player.rolling = true
+	player.invuln = 0
+	var ball: Node2D = boss.get("_ball")
+	player.global_position = ball.global_position + Vector2(0, 400)
+	await _frames(2)
+	player.global_position = ball.global_position
+	await _frames(4)
+	_check(Game.rings < 9, "the ball should hurt even an attacking player")
+	_check(boss.hp == hp_before, "the ball is not a target")
+	zone.queue_free()
+	await get_tree().process_frame
+
+
+## The player's damage box, as objects see it.
+func _player_hitbox(player: Player) -> Area2D:
+	for child in player.get_children():
+		if child is Area2D:
+			return child
+	return null
+
+
+# --------------------------------------------------------------------------- #
+# act placement validation
+# --------------------------------------------------------------------------- #
+## Walk an act's segments the way Zone does and return the x ranges with no
+## ground under them.
+func _gap_ranges(act: ActData) -> Array[Vector2]:
+	var gaps: Array[Vector2] = []
+	var x := 0.0
+	for segment in act.layout:
+		var length := 0.0
+		match segment["kind"]:
+			"loop":
+				length = float(segment["radius"]) * 2.0 + 80.0
+			"gap":
+				length = float(segment["length"])
+				gaps.append(Vector2(x, x + length))
+			_:
+				length = float(segment["length"])
+		x += length
+	return gaps
+
+
+## Object kinds that are *meant* to hang over a pit.
+func _may_span_gap(what: String) -> bool:
+	return what in ["ring_line", "ring_arc", "platform"]
+
+
+## Placement mistakes that cost real time to find by playing: something resting
+## on nothing, or a reward sitting just past the edge of the ledge meant to hold
+## it. Both happened while act 2 was being built.
+func _test_act_placement(_zone: Zone) -> void:
+	for index in Acts.count():
+		var act := Acts.get_act(index)
+		var label := "%s act %d" % [act.zone_name, act.act_number]
+		var gaps := _gap_ranges(act)
+
+		# collect the blocks first: things placed high up are usually on one
+		var blocks: Array[Dictionary] = []
+		for entry in act.objects:
+			if entry.get("what", "") == "block":
+				var width: float = float(entry.get("width", 96.0))
+				blocks.append({
+					"left": float(entry["x"]) - width * 0.5,
+					"right": float(entry["x"]) + width * 0.5,
+					"top": float(entry.get("y", 0.0)),
+				})
+
+		for entry in act.objects:
+			var what := String(entry.get("what", ""))
+			var x := float(entry.get("x", 0.0))
+			var lift := float(entry.get("y", 0.0))
+
+			# nothing may rest over a pit unless it is a trail or a ferry
+			if not _may_span_gap(what):
+				for gap in gaps:
+					_check(x < gap.x or x > gap.y,
+						"%s: %s at x = %.0f is over the gap %.0f-%.0f" % [
+							label, what, x, gap.x, gap.y])
+
+			# anything lifted to a block's height should be within that block
+			if what in ["monitor", "spring", "spikes", "checkpoint", "goal"] and lift > 24.0:
+				var supported := false
+				for block in blocks:
+					if is_equal_approx(float(block["top"]), lift) \
+							and x >= float(block["left"]) and x <= float(block["right"]):
+						supported = true
+				_check(supported,
+					"%s: %s at x = %.0f sits %.0f up with no block under it" % [
+						label, what, x, lift])

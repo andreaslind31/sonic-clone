@@ -7,13 +7,15 @@ class_name Acts
 ## to carry the player across.
 
 static func count() -> int:
-	return 2
+	return 3
 
 
 static func get_act(index: int) -> ActData:
 	match posmod(index, count()):
 		1:
 			return canyon_act_2()
+		2:
+			return canyon_act_3()
 		_:
 			return canyon_act_1()
 
@@ -147,3 +149,42 @@ static func canyon_act_2() -> ActData:
 		{"what": "goal", "x": 4800.0, "y": 0.0},
 	]
 	return ActData.make("GREEN CANYON", 2, layout, objects)
+
+
+# --------------------------------------------------------------------------- #
+## Act 3 is the zone's climax: a short, fast approach into a sealed arena where
+## the pod is waiting. No goal sign here — the capsule that appears once the boss
+## is beaten is what ends the act.
+static func canyon_act_3() -> ActData:
+	var layout: Array[Dictionary] = [
+		{"kind": "flat", "length": 300.0},
+		{"kind": "slope", "length": 180.0, "drop": -60.0},
+		{"kind": "loop", "radius": 68.0},
+		{"kind": "flat", "length": 160.0},
+		{"kind": "gap", "length": 120.0},
+		{"kind": "flat", "length": 200.0},
+		{"kind": "hill", "length": 260.0, "height": 64.0},
+		{"kind": "flat", "length": 180.0},
+		{"kind": "ramp", "length": 140.0, "height": 80.0},
+		{"kind": "slope", "length": 200.0, "drop": 140.0},
+		# the arena: deliberately flat and featureless, so the fight is the fight
+		{"kind": "flat", "length": 620.0},
+	]
+	var objects: Array[Dictionary] = [
+		{"what": "ring_line", "x": 200.0, "count": 4, "spacing": 24.0, "y": 32.0},
+		{"what": "badnik", "x": 400.0, "kind": "motobug", "patrol": 60.0, "y": 12.0},
+		{"what": "ring_arc", "x": 780.0, "count": 6, "spacing": 22.0, "y": 44.0, "arc": 28.0},
+		{"what": "ring_line", "x": 930.0, "count": 5, "spacing": 24.0, "y": 62.0},
+		{"what": "platform", "x": 990.0, "y": 48.0, "travel": Vector2(0, -54), "seconds": 2.2},
+		{"what": "monitor", "x": 1180.0, "y": 0.0, "item": "rings"},
+		{"what": "badnik", "x": 1320.0, "kind": "buzzer", "patrol": 80.0, "y": 96.0},
+		{"what": "checkpoint", "x": 1560.0, "y": 0.0},
+		{"what": "ring_line", "x": 1620.0, "count": 4, "spacing": 22.0, "y": 34.0},
+		{"what": "monitor", "x": 1760.0, "y": 0.0, "item": "shield"},
+		# stocking up before the pod: the fight is winnable but not forgiving
+		{"what": "ring_arc", "x": 1900.0, "count": 5, "spacing": 22.0, "y": 40.0, "arc": 24.0},
+		{"what": "boss", "x": 2340.0, "arena": 230.0, "height": 104.0},
+	]
+	var act := ActData.make("GREEN CANYON", 3, layout, objects)
+	act.time_bonus_cutoff = 120.0
+	return act

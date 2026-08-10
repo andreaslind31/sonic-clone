@@ -221,6 +221,14 @@ func _place_objects() -> void:
 					Vector2(x - wall_width * 0.5, ground - wall_height),
 					Vector2(wall_width, wall_height), _terrain_layers()
 				))
+			"boss":
+				var arena_half: float = float(entry.get("arena", 200.0))
+				var boss := Boss.create(
+					Vector2(x, ground - float(entry.get("height", 96.0))), arena_half
+				)
+				boss.activated.connect(_on_boss_activated.bind(x, arena_half))
+				boss.defeated.connect(_on_boss_defeated.bind(x, ground))
+				add_child(boss)
 			"checkpoint":
 				add_child(Checkpoint.create(where))
 			"goal":
@@ -247,6 +255,30 @@ func _spawn_player() -> void:
 	add_child(camera)
 	camera.make_current()
 	camera.snap_to_target()
+
+
+# --------------------------------------------------------------------------- #
+# boss fight
+# --------------------------------------------------------------------------- #
+## Seal the arena and pin the camera to it, so the fight cannot be walked away
+## from and the pod always stays on screen.
+func _on_boss_activated(centre_x: float, arena_half: float) -> void:
+	var left := centre_x - arena_half
+	var right := centre_x + arena_half
+	camera.limit_left = int(left)
+	camera.limit_right = int(right)
+	add_child(Block.create(
+		Vector2(left - 24.0, _bounds.position.y), Vector2(24.0, _bounds.size.y + 200.0),
+		_terrain_layers()
+	))
+	Sfx.play_music("music_boss")
+
+
+func _on_boss_defeated(centre_x: float, ground: float) -> void:
+	# the prize capsule drops in where the pod was, and clears the act when opened
+	add_child(Capsule.create(Vector2(centre_x, ground)))
+	camera.limit_right = int(_bounds.end.x)
+	Sfx.play_music("music_zone")
 
 
 func _add_hud() -> void:

@@ -685,6 +685,95 @@ def build_platform():
 
 
 # --------------------------------------------------------------------------- #
+# boss
+# --------------------------------------------------------------------------- #
+BOSS_HULL = (196, 200, 210)
+BOSS_HULL_D = (118, 124, 140)
+BOSS_TRIM = (208, 48, 48)
+BOSS_GLASS = (128, 200, 240)
+BOSS_COAT = (196, 40, 44)
+BOSS_SKIN = (247, 202, 148)
+
+
+def build_boss():
+    """Hover pod with a pilot under a glass dome. Frames: idle, thrust, hurt."""
+    frames = []
+    for mode in range(3):
+        c = Canvas(64, 56)
+        cx = 32
+        # thruster flare underneath
+        flare = 6 if mode == 1 else 3
+        c.ellipse(cx, 46, 9, flare, (255, 196, 80))
+        c.ellipse(cx, 45, 5, flare * 0.6, (255, 246, 200))
+        # hull
+        c.ellipse(cx, 36, 22, 11, BOSS_HULL_D)
+        c.ellipse(cx, 34, 21, 9, BOSS_HULL)
+        c.rect(cx - 22, 33, cx + 22, 35, BOSS_TRIM)
+        # dome
+        c.ring(cx, 22, 15, 13, BOSS_HULL_D, a0=180, a1=360)
+        c.ellipse(cx, 24, 13, 12, BOSS_GLASS if mode != 2 else (240, 150, 150))
+        # pilot: round body, goggles, big moustache
+        c.ellipse(cx, 27, 9, 8, BOSS_COAT)
+        c.disc(cx, 18, 7, BOSS_SKIN)
+        c.rect(cx - 7, 15, cx + 7, 17, (40, 40, 56))          # goggle strap
+        c.ellipse(cx - 3, 16, 3, 2.4, WHITE)
+        c.ellipse(cx + 3, 16, 3, 2.4, WHITE)
+        if mode == 2:
+            for ox in (-3, 3):
+                c.line(cx + ox - 2, 14, cx + ox + 2, 18, (40, 40, 56))
+                c.line(cx + ox + 2, 14, cx + ox - 2, 18, (40, 40, 56))
+        else:
+            c.disc(cx - 3, 16, 1.2, (40, 40, 56))
+            c.disc(cx + 3, 16, 1.2, (40, 40, 56))
+        c.ellipse(cx, 22, 8, 2.4, (232, 226, 220))            # moustache
+        c.ellipse(cx - 5, 22, 3.4, 2.0, (232, 226, 220))
+        c.ellipse(cx + 5, 22, 3.4, 2.0, (232, 226, 220))
+        c.disc(cx, 12, 2.0, BOSS_SKIN)                        # bald crown
+        c.outline(INK)
+        frames.append(c)
+    return sheet(frames)
+
+
+def build_wrecking_ball():
+    c = Canvas(24, 24)
+    c.disc(12, 12, 11, STEEL_D)
+    c.disc(12, 12, 9, STEEL)
+    c.disc(8, 8, 3, (236, 240, 246))
+    c.ring(12, 12, 11, 9, INK, a0=0, a1=360)
+    return c.a
+
+
+def build_chain_link():
+    c = Canvas(8, 8)
+    c.ring(4, 4, 3.5, 1.8, STEEL_D, a0=0, a1=360)
+    c.ring(4, 4, 2.8, 1.8, STEEL, a0=0, a1=360)
+    return c.a
+
+
+def build_capsule():
+    """Animal capsule: closed with a switch, then sprung open."""
+    frames = []
+    for opened in (False, True):
+        c = Canvas(64, 48)
+        c.rect(6, 20, 57, 44, BOSS_HULL_D)
+        c.rect(8, 22, 55, 42, BOSS_HULL)
+        c.rect(8, 22, 55, 26, BOSS_TRIM)
+        for x in range(12, 54, 12):
+            c.rect(x, 30, x + 6, 40, (86, 150, 220))
+        # switch plate on the lid
+        lid_y = 12 if not opened else 18
+        c.rect(20, lid_y, 43, lid_y + 6, BOSS_TRIM if not opened else BOSS_HULL_D)
+        c.rect(22, lid_y + 1, 41, lid_y + 3, (255, 120, 110) if not opened else BOSS_HULL)
+        c.rect(28, lid_y + 6, 35, 20, BOSS_HULL_D)
+        if opened:
+            c.rect(8, 22, 55, 30, (0, 0, 0, 0))  # lid sprung, interior open
+            c.rect(8, 30, 55, 32, BOSS_HULL_D)
+        c.outline(INK)
+        frames.append(c)
+    return sheet(frames)
+
+
+# --------------------------------------------------------------------------- #
 # terrain textures
 # --------------------------------------------------------------------------- #
 def build_ground_strip():
@@ -809,6 +898,10 @@ def main():
         os.path.join(sprites, "checkpoint.png"): build_checkpoint(),
         os.path.join(sprites, "goal.png"): build_goal(),
         os.path.join(sprites, "platform.png"): build_platform(),
+        os.path.join(sprites, "boss.png"): build_boss(),
+        os.path.join(sprites, "wrecking_ball.png"): build_wrecking_ball(),
+        os.path.join(sprites, "chain_link.png"): build_chain_link(),
+        os.path.join(sprites, "capsule.png"): build_capsule(),
         os.path.join(tiles, "ground_strip.png"): build_ground_strip(),
         os.path.join(tiles, "dirt_fill.png"): build_dirt_fill(),
         os.path.join(tiles, "loop_track.png"): build_loop_track(),
