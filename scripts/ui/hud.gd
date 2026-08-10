@@ -12,6 +12,8 @@ var _time_value: Label
 var _rings_value: Label
 var _lives_value: Label
 var _title_card: Control
+var _zone_label: Label
+var _act_label: Label
 var _results: Control
 var _fade: ColorRect
 
@@ -71,12 +73,17 @@ func _build_title_card() -> void:
 	backdrop.color = Color(0.08, 0.12, 0.28, 0.85)
 	backdrop.size = Vector2(424, 240)
 	_title_card.add_child(backdrop)
-	var name_label := _label("GREEN CANYON", LABEL_COLOUR, Vector2(96, 96), 20)
-	_title_card.add_child(name_label)
-	_title_card.add_child(_label("ZONE  ACT 1", VALUE_COLOUR, Vector2(140, 124), 12))
+	_zone_label = _label("", LABEL_COLOUR, Vector2(0, 92), 20)
+	_zone_label.size.x = 424
+	_zone_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_title_card.add_child(_zone_label)
+	_act_label = _label("", VALUE_COLOUR, Vector2(0, 122), 12)
+	_act_label.size.x = 424
+	_act_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_title_card.add_child(_act_label)
 	_title_card.add_child(_label(
 		"ARROWS move   SPACE jump   DOWN+SPACE spindash",
-		Color(0.8, 0.85, 1.0), Vector2(52, 190), 8
+		Color(0.8, 0.85, 1.0), Vector2(52, 208), 8
 	))
 	add_child(_title_card)
 
@@ -106,7 +113,9 @@ func _process(_delta: float) -> void:
 	_time_value.text = Game.time_string()
 
 
-func show_title_card(duration := 2.0) -> void:
+func show_title_card(zone_name: String, act_number: int, duration := 2.0) -> void:
+	_zone_label.text = zone_name
+	_act_label.text = "ZONE  ACT %d" % act_number
 	_title_card.visible = true
 	var tween := create_tween()
 	tween.tween_interval(duration)

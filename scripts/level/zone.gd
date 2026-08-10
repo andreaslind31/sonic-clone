@@ -1,89 +1,27 @@
 extends Node2D
 class_name Zone
-## Builds and runs the act: terrain, objects, player, camera and act flow.
+## Builds and runs an act: terrain, objects, player, camera and act flow.
 ##
-## The level is described by LAYOUT as a list of surface segments walked left to
-## right, and by OBJECTS as placements anchored to the generated ground. Building
+## The level arrives as an ActData: a list of surface segments walked left to
+## right, plus object placements anchored to the generated ground. Building
 ## terrain from data (rather than a hand-placed tilemap) keeps slopes smooth, so
 ## the sensors always read a clean surface normal.
+##
+## Set `act` before the node enters the tree to build a specific level; otherwise
+## the act named by Game.act_index is used.
 
-const GROUND_Y := 320.0
 const STEP := 8.0                ## sampling resolution for curved segments
 const DEATH_MARGIN := 260.0      ## how far below the lowest ground kills
-const TIME_BONUS_CUTOFF := 90.0
 
-## Surface segments. `kind` picks the shape; lengths and heights are in pixels.
-const LAYOUT: Array[Dictionary] = [
-	{"kind": "flat", "length": 420.0},
-	{"kind": "hill", "length": 320.0, "height": 64.0},
-	{"kind": "flat", "length": 120.0},
-	{"kind": "slope", "length": 256.0, "drop": 96.0},
-	{"kind": "valley", "length": 320.0, "depth": 72.0},
-	{"kind": "flat", "length": 150.0},
-	{"kind": "loop", "radius": 64.0},
-	{"kind": "flat", "length": 240.0},
-	{"kind": "hill", "length": 280.0, "height": 56.0},
-	{"kind": "flat", "length": 90.0},
-	{"kind": "gap", "length": 150.0},
-	{"kind": "flat", "length": 190.0},
-	{"kind": "slope", "length": 240.0, "drop": -120.0},
-	{"kind": "flat", "length": 200.0},
-	{"kind": "slope", "length": 200.0, "drop": 120.0},
-	{"kind": "valley", "length": 280.0, "depth": 64.0},
-	{"kind": "loop", "radius": 76.0},
-	{"kind": "flat", "length": 260.0},
-	{"kind": "hill", "length": 360.0, "height": 88.0},
-	{"kind": "flat", "length": 140.0},
-	{"kind": "gap", "length": 170.0},
-	{"kind": "flat", "length": 300.0},
-	{"kind": "ramp", "length": 160.0, "height": 96.0},
-	{"kind": "flat", "length": 120.0},
-	{"kind": "slope", "length": 180.0, "drop": 96.0},
-	{"kind": "flat", "length": 700.0},
-]
-
-## Object placements. `y` lifts the object above the ground at that x. Positions
-## are chosen against the segment run above: nothing sits over a gap except the
-## ring trails and platforms that are meant to be crossed.
-const OBJECTS: Array[Dictionary] = [
-	{"what": "ring_arc", "x": 300.0, "count": 5, "spacing": 24.0, "y": 34.0, "arc": 26.0},
-	{"what": "monitor", "x": 600.0, "y": 0.0, "item": "rings"},
-	{"what": "ring_line", "x": 720.0, "count": 4, "spacing": 24.0, "y": 30.0},
-	{"what": "badnik", "x": 990.0, "kind": "motobug", "patrol": 80.0, "y": 12.0},
-	{"what": "ring_arc", "x": 1180.0, "count": 6, "spacing": 22.0, "y": 60.0, "arc": 34.0},
-	{"what": "ring_line", "x": 1480.0, "count": 4, "spacing": 24.0, "y": 40.0},
-	{"what": "badnik", "x": 1860.0, "kind": "buzzer", "patrol": 70.0, "y": 96.0},
-	{"what": "spring", "x": 2010.0, "y": 8.0, "dir": "up"},
-	{"what": "monitor", "x": 2100.0, "y": 0.0, "item": "shoes"},
-	{"what": "ring_arc", "x": 2200.0, "count": 5, "spacing": 22.0, "y": 44.0, "arc": 28.0},
-	# the first pit: a ring trail baits the jump, the platform is the safe route
-	{"what": "ring_line", "x": 2420.0, "count": 5, "spacing": 24.0, "y": 60.0},
-	{"what": "platform", "x": 2479.0, "y": 46.0, "travel": Vector2(0, -56), "seconds": 2.4},
-	{"what": "checkpoint", "x": 2600.0, "y": 0.0},
-	{"what": "ring_line", "x": 2640.0, "count": 3, "spacing": 22.0, "y": 30.0},
-	{"what": "spikes", "x": 2700.0, "y": 7.0},
-	{"what": "badnik", "x": 2880.0, "kind": "motobug", "patrol": 90.0, "y": 12.0},
-	{"what": "monitor", "x": 3050.0, "y": 0.0, "item": "shield"},
-	{"what": "ring_arc", "x": 3250.0, "count": 7, "spacing": 22.0, "y": 54.0, "arc": 30.0},
-	{"what": "badnik", "x": 4000.0, "kind": "buzzer", "patrol": 90.0, "y": 100.0},
-	{"what": "ring_line", "x": 4100.0, "count": 6, "spacing": 22.0, "y": 36.0},
-	{"what": "monitor", "x": 4300.0, "y": 0.0, "item": "life"},
-	{"what": "spring", "x": 4450.0, "y": 8.0, "dir": "right"},
-	{"what": "ring_arc", "x": 4570.0, "count": 5, "spacing": 24.0, "y": 66.0, "arc": 30.0},
-	# the second pit
-	{"what": "ring_line", "x": 4680.0, "count": 6, "spacing": 24.0, "y": 70.0},
-	{"what": "platform", "x": 4741.0, "y": 54.0, "travel": Vector2(0, -64), "seconds": 2.2},
-	{"what": "badnik", "x": 4950.0, "kind": "motobug", "patrol": 70.0, "y": 12.0},
-	{"what": "spikes", "x": 5060.0, "y": 7.0},
-	{"what": "ring_line", "x": 5180.0, "count": 5, "spacing": 22.0, "y": 40.0},
-	{"what": "ring_arc", "x": 5320.0, "count": 6, "spacing": 22.0, "y": 48.0, "arc": 30.0},
-	{"what": "goal", "x": 5900.0, "y": 0.0},
-]
+@export var act: ActData
+## Off for the test suite: a restart would reload whatever scene is running.
+@export var auto_restart := true
 
 var player: Player
 var camera: FollowCamera
 var hud: Hud
 
+var _ground_y := 320.0
 var _samples := PackedVector2Array()   ## surface height lookup, ascending in x
 var _bounds := Rect2()
 var _finished := false
@@ -92,14 +30,17 @@ var _restarting := false
 
 func _ready() -> void:
 	randomize()
+	if act == null:
+		act = Acts.get_act(Game.act_index)
+	_ground_y = act.ground_y
 	_build_terrain()
 	_add_sky()
 	_place_objects()
 	_spawn_player()
 	_add_hud()
 	Game.act_running = true
-	Sfx.play_music()
-	hud.show_title_card()
+	Sfx.play_music(act.music)
+	hud.show_title_card(act.zone_name, act.act_number)
 	hud.fade_in()
 
 
@@ -108,12 +49,12 @@ func _ready() -> void:
 # --------------------------------------------------------------------------- #
 func _build_terrain() -> void:
 	var terrain_layers: int = Game.COLLISION_LAYERS.terrain_a | Game.COLLISION_LAYERS.terrain_b
-	var cursor := Vector2(0.0, GROUND_Y)
+	var cursor := Vector2(0.0, _ground_y)
 	var strip := PackedVector2Array([cursor])
-	var lowest := GROUND_Y
-	var highest := GROUND_Y
+	var lowest := _ground_y
+	var highest := _ground_y
 
-	for segment in LAYOUT:
+	for segment in act.layout:
 		match segment["kind"]:
 			"flat":
 				cursor.x += segment["length"]
@@ -195,7 +136,7 @@ func _finish_strip(strip: PackedVector2Array, layers: int) -> void:
 ## Ground height at a world x, interpolated from the generated surface.
 func surface_y(x: float) -> float:
 	if _samples.is_empty():
-		return GROUND_Y
+		return _ground_y
 	if x <= _samples[0].x:
 		return _samples[0].y
 	for i in range(1, _samples.size()):
@@ -213,11 +154,11 @@ func surface_y(x: float) -> float:
 # contents
 # --------------------------------------------------------------------------- #
 func _add_sky() -> void:
-	add_child(SkyBackdrop.create(GROUND_Y))
+	add_child(SkyBackdrop.create(_ground_y))
 
 
 func _place_objects() -> void:
-	for entry in OBJECTS:
+	for entry in act.objects:
 		var x: float = entry["x"]
 		var ground := surface_y(x)
 		var lift: float = entry.get("y", 0.0)
@@ -266,7 +207,7 @@ func _place_objects() -> void:
 
 func _spawn_player() -> void:
 	player = Player.new()
-	var start := Vector2(120.0, surface_y(120.0) - Player.HEIGHT_RADIUS)
+	var start := Vector2(act.start_x, surface_y(act.start_x) - player.height_radius)
 	if Game.checkpoint_set:
 		start = Game.checkpoint
 	player.position = start
@@ -318,7 +259,7 @@ func _on_player_died() -> void:
 
 
 func _restart(from_start: bool) -> void:
-	if _restarting:
+	if _restarting or not auto_restart:
 		return
 	_restarting = true
 	if from_start:
@@ -336,7 +277,7 @@ func _on_goal_reached() -> void:
 	Game.act_running = false
 	Sfx.fade_music(0.3)
 	Sfx.play("goal")
-	var time_bonus := int(maxf(0.0, TIME_BONUS_CUTOFF - Game.time_left) * 100.0)
+	var time_bonus := int(maxf(0.0, act.time_bonus_cutoff - Game.time_left) * 100.0)
 	var ring_bonus := Game.rings * 100
 	Game.add_score(time_bonus + ring_bonus)
 	await get_tree().create_timer(1.6).timeout

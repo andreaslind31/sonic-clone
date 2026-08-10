@@ -30,6 +30,7 @@ const BINDINGS := {
 
 var score := 0
 var rings := 0
+var act_index := 0        ## which act in the Acts registry is being played
 var lives := 3
 var time_left := 0.0        ## seconds elapsed in the act
 var act_running := false
@@ -81,6 +82,7 @@ func _add_joy_button(action: String, button: JoyButton) -> void:
 ## Fresh run: called on boot and after a game over.
 func reset_run() -> void:
 	score = 0
+	act_index = 0
 	rings = 0
 	lives = 3
 	time_left = 0.0
