@@ -16,6 +16,7 @@ var _character_value: Label
 var _title_card: Control
 var _zone_label: Label
 var _act_label: Label
+var _card_character: Label
 var _results: Control
 var _results_summary: Label
 var _results_footer: Label
@@ -89,13 +90,10 @@ func _build_title_card() -> void:
 	_act_label.size.x = 424
 	_act_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_title_card.add_child(_act_label)
-	# roster: the number keys switch character at any time, so list them here
-	var y := 148
-	for i in Characters.count():
-		var character := Characters.get_character(i)
-		var line := "%d  %-6s %s" % [i + 1, character.display_name, character.blurb]
-		_title_card.add_child(_label(line, Color(0.82, 0.88, 1.0), Vector2(122, y), 8))
-		y += 11
+	_card_character = _label("", Color(0.82, 0.88, 1.0), Vector2(0, 150), 10)
+	_card_character.size.x = 424
+	_card_character.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_title_card.add_child(_card_character)
 	_title_card.add_child(_label(
 		"ARROWS move   SPACE jump   DOWN+SPACE spindash",
 		Color(0.7, 0.76, 0.92), Vector2(52, 220), 8
@@ -148,6 +146,8 @@ func refresh_character() -> void:
 func show_title_card(zone_name: String, act_number: int, duration := 2.0) -> void:
 	_zone_label.text = zone_name
 	_act_label.text = "ZONE  ACT %d" % act_number
+	var character := Characters.get_character(Game.character_index)
+	_card_character.text = "%s  -  %s" % [character.display_name, character.blurb]
 	_title_card.visible = true
 	var tween := create_tween()
 	tween.tween_interval(duration)

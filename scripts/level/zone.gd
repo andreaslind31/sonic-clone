@@ -20,12 +20,14 @@ const DEATH_MARGIN := 260.0      ## how far below the lowest ground kills
 var player: Player
 var camera: FollowCamera
 var hud: Hud
+var pause_menu: PauseMenu
 
 var _ground_y := 320.0
 var _samples := PackedVector2Array()   ## surface height lookup, ascending in x
 var _bounds := Rect2()
 var _finished := false
 var _restarting := false
+var _awaiting_title := false  ## the last act is cleared; waiting for a keypress
 
 
 func _ready() -> void:
@@ -250,6 +252,10 @@ func _spawn_player() -> void:
 func _add_hud() -> void:
 	hud = Hud.new()
 	add_child(hud)
+	pause_menu = PauseMenu.create()
+	pause_menu.restart_requested.connect(func() -> void: _restart(true))
+	pause_menu.quit_requested.connect(_return_to_title)
+	add_child(pause_menu)
 
 
 # --------------------------------------------------------------------------- #
@@ -258,53 +264,40 @@ func _add_hud() -> void:
 func _process(_delta: float) -> void:
 	if player == null:
 		return
+	if _awaiting_title:
+		if Input.is_action_just_pressed("start") or Input.is_action_just_pressed("jump"):
+			_return_to_title()
+		return
 	if Input.is_action_just_pressed("restart"):
 		_restart(true)
 	if Input.is_action_just_pressed("debug"):
 		Game.debug_draw = not Game.debug_draw
 		player.queue_redraw()
-	for i in Characters.count():
-		if Input.is_action_just_pressed("select_%d" % (i + 1)):
-			_switch_character(i)
 	if not _finished and player.global_position.y > _bounds.end.y + DEATH_MARGIN:
 		player.kill()
-
-
-## Swap character mid-run, keeping position and momentum. Handy while playing and
-## essential for trying an ability without replaying the act to reach it.
-func _switch_character(index: int) -> void:
-	if index == Game.character_index or _finished or player.state == Player.State.DEAD:
-		return
-	Game.character_index = index
-	var replacement := Player.create(Characters.get_character(index))
-	replacement.position = player.position
-	replacement.z_index = player.z_index
-	replacement.ground_speed = player.ground_speed
-	replacement.velocity = player.velocity
-	replacement.ground_angle = player.ground_angle
-	replacement.grounded = player.grounded
-	replacement.facing = player.facing
-	replacement.start_path_layer = player.path_layer
-	var old := player
-	player = replacement
-	add_child(replacement)
-	replacement.died.connect(_on_player_died)
-	replacement.reached_goal.connect(_on_goal_reached)
-	camera.target = replacement
-	old.queue_free()
-	hud.refresh_character()
-	Sfx.play("checkpoint", 1.4)
 
 
 func _on_player_died() -> void:
 	Game.act_running = false
 	Game.lose_life()
 	if Game.lives <= 0:
-		Game.reset_run()
-		_restart(true)
+		# out of lives: the run is over, so hand control back to the title screen
+		_return_to_title()
 	else:
 		Game.reset_life()
 		_restart(false)
+
+
+func _return_to_title() -> void:
+	if _restarting:
+		return
+	_restarting = true
+	Game.reset_run()
+	if not auto_restart:
+		return
+	hud.fade_out(0.5)
+	await get_tree().create_timer(0.55).timeout
+	get_tree().change_scene_to_file(Game.MENU_SCENE)
 
 
 func _restart(from_start: bool) -> void:
@@ -324,6 +317,7 @@ func _on_goal_reached() -> void:
 		return
 	_finished = true
 	Game.act_running = false
+	pause_menu.can_pause = false
 	Sfx.fade_music(0.3)
 	Sfx.play("goal")
 	var time_bonus := int(maxf(0.0, act.time_bonus_cutoff - Game.time_left) * 100.0)
@@ -333,8 +327,9 @@ func _on_goal_reached() -> void:
 	var last_act := Game.act_index >= Acts.count() - 1
 	hud.show_results("TIME %s   RINGS %d   BONUS %d" % [
 		Game.time_string(), Game.rings, time_bonus + ring_bonus
-	], "" if last_act else "NEXT ACT...")
+	], "SPACE FOR THE TITLE SCREEN" if last_act else "NEXT ACT...")
 	if last_act:
+		_awaiting_title = true
 		return
 	# roll on to the next act, keeping score, lives and the chosen character
 	await get_tree().create_timer(2.4).timeout

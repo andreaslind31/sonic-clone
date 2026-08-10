@@ -9,6 +9,9 @@ signal score_changed(value: int)
 signal lives_changed(count: int)
 signal life_lost()
 
+const MENU_SCENE := "res://scenes/menu.tscn"
+const GAME_SCENE := "res://scenes/game.tscn"
+
 const COLLISION_LAYERS := {
 	"terrain_a": 1 << 0,
 	"terrain_b": 1 << 1,
@@ -31,6 +34,8 @@ const BINDINGS := {
 	"select_3": [KEY_3],
 	"select_4": [KEY_4],
 	"select_5": [KEY_5],
+	"start": [KEY_ENTER, KEY_KP_ENTER, KEY_SPACE],
+	"pause": [KEY_ESCAPE, KEY_P],
 }
 
 var score := 0

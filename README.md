@@ -22,11 +22,18 @@ godot --path .          # or just open the folder in the Godot editor
 | ↓ + Space | charge a spindash; release ↓ to fire |
 | ↑ | look up (the camera pans after two seconds) |
 | Space / Z / J | jump; press again in mid-air for the character's special move |
-| 1 - 5 | switch character on the spot, keeping position and momentum |
+| Esc / P | pause, and open the resume / restart / quit menu |
 | R | restart the act |
 | F1 | draw the collision sensors |
 
 A gamepad works too: left stick or d-pad, bottom face button to jump.
+
+The game boots to a title screen rather than into an act. Pick a character there
+with the arrows or the number keys, then Space or Enter to start; that choice is
+fixed for the whole run, so a route planned around one character's moves cannot
+be undone halfway through. Losing the last life returns to the title.
+
+![the title screen with the roster and a character preview](docs/menu.png)
 
 ## The roster
 
@@ -49,6 +56,9 @@ in one place.
 
 All five share one hook — jump pressed while already airborne — implemented in
 `scripts/player/abilities.gd`. Everything else about movement is common code.
+
+The roster is chosen on the title screen (`scripts/ui/menu.gd`) and cannot change
+mid-run.
 
 ## How the movement works
 
@@ -108,7 +118,7 @@ scripts/player/        physics, sensors, character stats, abilities
 scripts/world/         terrain, blocks, loops, path switchers, camera, parallax
 scripts/objects/       rings, springs, monitors, badniks, spikes, platforms, goal
 scripts/level/         act data (acts.gd) and the builder/act flow (zone.gd)
-scripts/ui/hud.gd      readout, title card, roster, results
+scripts/ui/            title menu, pause menu, in-game readout and results
 assets/                generated art and audio, plus the Kenney CC0 sources
 tools/                 asset generators and the playtest harness
 tests/                 the physics regression suite
@@ -147,7 +157,10 @@ braking and the brake-through-zero snap, top speed, jump force and release cap,
 gravity, downhill slope gain, rolling friction and the roll hitbox, and the
 spindash. On top of that it checks the abilities, that blocks are solid on every
 face, that a wall can be climbed and pushed off, that a loop is traversed upside
-down with a path-layer flip, and two level-data guards — every object kind is one
+down with a path-layer flip, that the game boots to the menu and the menu's
+character choice reaches the run, that pausing actually freezes the player and
+that no exit from the pause menu leaves the tree paused, and two level-data
+guards — every object kind is one
 the builder knows, and no wall on a critical path is taller than the weakest jump
 in the roster can clear. It exits non-zero on failure.
 

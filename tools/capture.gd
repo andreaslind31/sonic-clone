@@ -29,13 +29,14 @@ var _character := -1                ## which character to play; -1 keeps the cur
 
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	_parse_args()
 	# Game.reset_run() has already run by now, so these have to be set after boot
 	if _act >= 0:
 		Game.act_index = _act
 	if _character >= 0:
 		Game.character_index = _character
-	_zone = load("res://scenes/main.tscn").instantiate()
+	_zone = load(Game.GAME_SCENE).instantiate()
 	add_child(_zone)
 	if _warp_x >= 0.0:
 		var player := _player()
@@ -87,6 +88,12 @@ func _parse_args() -> void:
 				_act = int(value)
 			"--char":
 				_character = int(value)
+
+
+func _process(_delta: float) -> void:
+	# taps still need driving while the tree is paused, which stops _physics_process
+	if get_tree().paused:
+		_drive_input()
 
 
 func _physics_process(_delta: float) -> void:

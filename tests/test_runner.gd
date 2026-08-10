@@ -40,7 +40,7 @@ func _run_all() -> void:
 		{"name": "rings are collected and scored", "fn": _test_rings},
 		{"name": "sensors agree with the generated surface", "fn": _test_sensors},
 		{"name": "every character keeps the SPG defaults it does not override",
-			"fn": _test_character_defaults},
+			"fn": _test_character_defaults, "zone": false},
 		{"name": "flight climbs while jump is held, and runs out", "fn": _test_fly,
 			"character": 1},
 		{"name": "glide falls slowly and steers", "fn": _test_glide, "character": 2},
@@ -51,17 +51,35 @@ func _run_all() -> void:
 		{"name": "an ability is spent once per airtime", "fn": _test_ability_spend,
 			"character": 1},
 		{"name": "blocks are solid on every face", "fn": _test_block_faces},
-		{"name": "no act wall is taller than the roster can jump", "fn": _test_walls_passable},
-		{"name": "acts are registered and distinct", "fn": _test_act_registry},
+		{"name": "no act wall is taller than the roster can jump",
+			"fn": _test_walls_passable, "zone": false},
+		{"name": "acts are registered and distinct", "fn": _test_act_registry, "zone": false},
+		{"name": "the game boots into the menu, not into an act",
+			"fn": _test_boots_to_menu, "zone": false},
+		{"name": "the menu picks a character and starts the game",
+			"fn": _test_menu_select, "zone": false},
+		{"name": "character cannot be switched mid-run", "fn": _test_no_mid_run_switch,
+			"character": 2},
+		{"name": "escape pauses and resumes, freezing the player", "fn": _test_pause},
+		{"name": "leaving the pause menu never leaves the tree paused",
+			"fn": _test_pause_exits_clean},
 		{"name": "a wall can be climbed and pushed off", "fn": _test_wall_climb,
 			"character": 2},
 	]
 	for entry in suite:
 		_current = entry["name"]
-		var zone := await _fresh_zone(int(entry.get("character", 0)))
+		# data-only and menu scenarios opt out: building a level would put a
+		# player in the tree that they would then trip over
+		var zone: Zone = null
+		if bool(entry.get("zone", true)):
+			zone = await _fresh_zone(int(entry.get("character", 0)))
+		else:
+			Game.reset_run()
 		await (entry["fn"] as Callable).call(zone)
 		_release_all()
-		zone.queue_free()
+		get_tree().paused = false
+		if zone != null:
+			zone.queue_free()
 		await get_tree().process_frame
 
 
@@ -616,3 +634,120 @@ func _test_act_registry(_zone: Zone) -> void:
 		for entry in act.objects:
 			_check(KNOWN.has(entry.get("what", "")),
 				"act %d has an unknown object kind: %s" % [index, entry.get("what", "?")])
+
+
+# --------------------------------------------------------------------------- #
+# menu and run boundaries
+# --------------------------------------------------------------------------- #
+## Launching the app must not drop straight into gameplay.
+func _test_boots_to_menu(_zone: Zone) -> void:
+	var main_scene: String = ProjectSettings.get_setting("application/run/main_scene", "")
+	_check(main_scene == Game.MENU_SCENE,
+		"main scene should be %s, is %s" % [Game.MENU_SCENE, main_scene])
+	_check(ResourceLoader.exists(Game.MENU_SCENE), "the menu scene is missing")
+	_check(ResourceLoader.exists(Game.GAME_SCENE), "the game scene is missing")
+	# the menu must not build a level of its own
+	var menu: Node = load(Game.MENU_SCENE).instantiate()
+	add_child(menu)
+	await _frames(3)
+	_check(menu.get_tree().get_nodes_in_group("player").is_empty(),
+		"the menu should not spawn a player")
+	menu.queue_free()
+	await get_tree().process_frame
+
+
+## Moving the cursor and confirming should settle on a character and hand over.
+func _test_menu_select(_zone: Zone) -> void:
+	Game.character_index = 0
+	var menu: Node = load(Game.MENU_SCENE).instantiate()
+	add_child(menu)
+	await _frames(3)
+	_press("select_3")
+	await _frames(3)
+	_release("select_3")
+	await _frames(2)
+	_check(menu.get("_selected") == 2, "expected the number keys to move the cursor")
+	_press("move_right")
+	await _frames(3)
+	_release("move_right")
+	await _frames(2)
+	_check(menu.get("_selected") == 3, "expected the arrows to move the cursor")
+	menu.call("_start")
+	await _frames(2)
+	_check(Game.character_index == 3,
+		"expected the confirmed character to be recorded, got %d" % Game.character_index)
+	_check(Game.act_index == 0, "a fresh run should start at the first act")
+	menu.queue_free()
+	await get_tree().process_frame
+
+	# and the choice must survive into the run the menu hands off to
+	var game: Node = load(Game.GAME_SCENE).instantiate()
+	add_child(game)
+	await _frames(3)
+	var zone := game as Zone
+	_check(zone != null, "the game scene should be a Zone")
+	if zone != null:
+		_check(zone.player != null, "the run should have a player")
+		if zone.player != null:
+			_check(zone.player.stats.slug == Characters.get_character(3).slug,
+				"the run should use the character the menu confirmed, got %s"
+					% zone.player.stats.slug)
+	game.queue_free()
+	await get_tree().process_frame
+
+
+## A run keeps whichever character started it.
+func _test_no_mid_run_switch(zone: Zone) -> void:
+	var before := zone.player.stats.slug
+	_check(before == Characters.get_character(2).slug,
+		"expected the run to start as the chosen character")
+	for i in Characters.count():
+		_press("select_%d" % (i + 1))
+		await _frames(2)
+		_release("select_%d" % (i + 1))
+	await _frames(4)
+	_check(zone.player.stats.slug == before,
+		"character changed mid-run from %s to %s" % [before, zone.player.stats.slug])
+	_check(Game.character_index == 2, "the roster choice should be untouched during a run")
+
+
+# --------------------------------------------------------------------------- #
+# pause
+# --------------------------------------------------------------------------- #
+func _test_pause(zone: Zone) -> void:
+	var player := zone.player
+	await _place(zone, 300.0)
+	_press("move_right")
+	await _frames(40)
+	_check(player.ground_speed > 0.0, "expected to be running before the pause")
+
+	zone.pause_menu.pause()
+	await _frames(2)
+	_check(get_tree().paused, "expected the tree to be paused")
+	_check(zone.pause_menu.is_paused(), "expected the pause menu to know it is up")
+	var frozen_x: float = player.global_position.x
+	var frozen_speed: float = player.ground_speed
+	await _frames(30)
+	_check_near(player.global_position.x, frozen_x, EPS, "position while paused")
+	_check_near(player.ground_speed, frozen_speed, EPS, "ground speed while paused")
+
+	zone.pause_menu.resume()
+	await _frames(10)
+	_check(not get_tree().paused, "expected the tree to resume")
+	_check(player.global_position.x > frozen_x, "expected movement to continue after resuming")
+
+
+## A scene change made while paused would load the next scene frozen, so every
+## way out of this menu has to clear the flag.
+func _test_pause_exits_clean(zone: Zone) -> void:
+	for option in [0, 1, 2]:
+		zone.pause_menu.pause()
+		await _frames(2)
+		_check(get_tree().paused, "option %d: expected a pause" % option)
+		zone.pause_menu.set("_selected", option)
+		zone.pause_menu.call("_confirm")
+		await _frames(2)
+		_check(not get_tree().paused,
+			"option %d (%s) left the tree paused" % [option, PauseMenu.OPTIONS[option]])
+		_check(not zone.pause_menu.is_paused(),
+			"option %d left the menu thinking it is still up" % option)
