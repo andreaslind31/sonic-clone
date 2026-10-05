@@ -22,6 +22,8 @@ func _ready() -> void:
 	for i in VOICES:
 		var player := AudioStreamPlayer.new()
 		player.bus = "Master"
+		# menu chimes must still sound over a paused game
+		player.process_mode = Node.PROCESS_MODE_ALWAYS
 		add_child(player)
 		_voices.append(player)
 	_music_player = AudioStreamPlayer.new()

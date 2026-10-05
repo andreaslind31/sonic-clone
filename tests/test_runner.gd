@@ -63,6 +63,12 @@ func _run_all() -> void:
 			"fn": _test_act_placement, "zone": false},
 		{"name": "settings persist and keyboard controls can be remapped",
 			"fn": _test_settings_persistence, "zone": false},
+		{"name": "the window scales by whole multiples to fit big screens",
+			"fn": _test_window_scale, "zone": false},
+		{"name": "remapping keeps keys unique and Esc on pause",
+			"fn": _test_remap_rules, "zone": false},
+		{"name": "the 100-ring extra life is earned again after a lost life",
+			"fn": _test_ring_life_resets, "zone": false},
 		{"name": "completion records preserve the fastest time",
 			"fn": _test_completion_records, "zone": false},
 		{"name": "the options overlay edits settings and captures a key",
@@ -726,6 +732,47 @@ func _test_settings_persistence(_zone: Zone) -> void:
 	Game.set_sfx_volume(1.0, false)
 	Game.set_fullscreen(false, false)
 	_remove_test_files()
+
+
+func _test_window_scale(_zone: Zone) -> void:
+	var base := Vector2i(424, 240)
+	_check(Game.window_scale_for(Vector2i(1366, 728), base) == 2, "768p laptop should get 2x")
+	_check(Game.window_scale_for(Vector2i(1920, 1040), base) == 3, "1080p should get 3x")
+	_check(Game.window_scale_for(Vector2i(2560, 1400), base) == 5, "1440p should get 5x")
+	_check(Game.window_scale_for(Vector2i(3840, 2120), base) == 7, "4K should get 7x")
+	_check(Game.window_scale_for(Vector2i(400, 200), base) == 1, "tiny screens still get 1x")
+	_check(InputMap.has_action("fullscreen"), "F11 fullscreen action is registered")
+
+
+func _test_remap_rules(_zone: Zone) -> void:
+	Game.reset_key_bindings(false)
+	_check(Game.set_key_binding("jump", KEY_R, false), "jump should accept R")
+	_check(not _action_has_key("restart", KEY_R), "R should leave restart once jump takes it")
+	_check(not Game.set_key_binding("jump", KEY_ESCAPE, false), "Esc is reserved")
+	_check(not Game.set_key_binding("pause", KEY_SPACE, false),
+		"pause must not share a menu confirm key")
+	_check(Game.set_key_binding("pause", KEY_X, false), "pause should accept X")
+	_check(_action_has_key("pause", KEY_ESCAPE), "Esc should always stay on pause")
+	_check(_action_has_key("pause", KEY_X), "pause should gain X")
+	Game.reset_key_bindings(false)
+
+
+func _action_has_key(action: String, keycode: Key) -> bool:
+	for event in InputMap.action_get_events(action):
+		if event is InputEventKey and event.physical_keycode == keycode:
+			return true
+	return false
+
+
+func _test_ring_life_resets(_zone: Zone) -> void:
+	Game.reset_run()
+	var start := Game.lives
+	Game.add_rings(100)
+	_check(Game.lives == start + 1, "100 rings should award a life")
+	Game.reset_life()
+	Game.add_rings(100)
+	_check(Game.lives == start + 2, "the next life should be able to earn it again")
+	Game.reset_run()
 
 
 func _test_completion_records(_zone: Zone) -> void:

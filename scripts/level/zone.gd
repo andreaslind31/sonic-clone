@@ -300,7 +300,7 @@ func _process(_delta: float) -> void:
 		if Input.is_action_just_pressed("start") or Input.is_action_just_pressed("jump"):
 			_return_to_title()
 		return
-	if Input.is_action_just_pressed("restart"):
+	if Input.is_action_just_pressed("restart") and not _finished:
 		_restart(true)
 	if Input.is_action_just_pressed("debug"):
 		Game.debug_draw = not Game.debug_draw
@@ -310,6 +310,9 @@ func _process(_delta: float) -> void:
 
 
 func _on_player_died() -> void:
+	# A cleared act or a quit already in progress owns what happens next.
+	if _finished or _restarting:
+		return
 	Game.act_running = false
 	Game.lose_life()
 	if Game.lives <= 0:
@@ -327,20 +330,29 @@ func _return_to_title() -> void:
 	Game.reset_run()
 	if not auto_restart:
 		return
+	pause_menu.can_pause = false
 	hud.fade_out(0.5)
 	await get_tree().create_timer(0.55).timeout
+	# The timer runs through a pause, so never hand a paused tree to the next scene.
+	get_tree().paused = false
 	get_tree().change_scene_to_file(Game.MENU_SCENE)
 
 
 func _restart(from_start: bool) -> void:
 	if _restarting or not auto_restart:
 		return
+	# A manual restart while dying would dodge the lost life.
+	if from_start and player.state == Player.State.DEAD:
+		return
 	_restarting = true
+	pause_menu.can_pause = false
+	Game.act_running = false
 	if from_start:
 		Game.checkpoint_set = false
 		Game.time_left = 0.0
 	hud.fade_out(0.4)
 	await get_tree().create_timer(0.45).timeout
+	get_tree().paused = false
 	get_tree().reload_current_scene()
 
 

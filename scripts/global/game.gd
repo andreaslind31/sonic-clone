@@ -33,6 +33,7 @@ const BINDINGS := {
 	"jump": [KEY_SPACE, KEY_Z, KEY_J],
 	"restart": [KEY_R],
 	"debug": [KEY_F1],
+	"fullscreen": [KEY_F11],
 	"select_1": [KEY_1],
 	"select_2": [KEY_2],
 	"select_3": [KEY_3],
@@ -46,6 +47,9 @@ const BINDINGS := {
 const REMAPPABLE_ACTIONS := [
 	"move_left", "move_right", "look_up", "crouch", "jump", "restart", "pause",
 ]
+
+## Keys that menus and hotkeys rely on; Esc always pauses and backs out.
+const RESERVED_KEYS := [KEY_ESCAPE, KEY_F1, KEY_F11, KEY_O]
 
 const ACTION_LABELS := {
 	"move_left": "MOVE LEFT",
@@ -86,6 +90,9 @@ func _ready() -> void:
 	_load_settings()
 	_load_progress()
 	_apply_fullscreen()
+	var hotkeys := _Hotkeys.new()
+	hotkeys.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(hotkeys)
 	reset_run()
 
 
@@ -179,20 +186,66 @@ func set_fullscreen(value: bool, save := true) -> void:
 func _apply_fullscreen() -> void:
 	if DisplayServer.get_name() == "headless":
 		return
-	DisplayServer.window_set_mode(
-		DisplayServer.WINDOW_MODE_FULLSCREEN if fullscreen else DisplayServer.WINDOW_MODE_WINDOWED
-	)
-
-
-func set_key_binding(action: String, keycode: Key, save := true) -> void:
-	if action not in REMAPPABLE_ACTIONS or keycode == KEY_NONE:
+	if fullscreen:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 		return
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+	_fit_window_to_screen()
+
+
+## Size the window to the largest whole multiple of the viewport that fits the
+## screen, so big monitors get a big, still pixel-exact window.
+func _fit_window_to_screen() -> void:
+	var screen := DisplayServer.window_get_current_screen()
+	var usable := DisplayServer.screen_get_usable_rect(screen)
+	var base := Vector2i(
+		ProjectSettings.get_setting("display/window/size/viewport_width"),
+		ProjectSettings.get_setting("display/window/size/viewport_height"),
+	)
+	var size := base * window_scale_for(usable.size, base)
+	DisplayServer.window_set_size(size)
+	DisplayServer.window_set_position(usable.position + (usable.size - size) / 2)
+
+
+## Largest integer scale of `base` that fits within 90% of `available`.
+static func window_scale_for(available: Vector2i, base: Vector2i) -> int:
+	var fit := mini(
+		floori(available.x * 0.9 / base.x), floori(available.y * 0.9 / base.y)
+	)
+	return maxi(1, fit)
+
+
+## Game itself pauses with the tree (the act timer must stop), so the
+## fullscreen hotkey lives on a child that keeps listening while paused.
+class _Hotkeys extends Node:
+	func _unhandled_input(event: InputEvent) -> void:
+		if event.is_action_pressed("fullscreen"):
+			Game.set_fullscreen(not Game.fullscreen)
+			get_viewport().set_input_as_handled()
+
+
+## Returns false when the key is reserved and the binding was refused.
+func set_key_binding(action: String, keycode: Key, save := true) -> bool:
+	if action not in REMAPPABLE_ACTIONS or keycode == KEY_NONE:
+		return false
+	if keycode in RESERVED_KEYS:
+		return false
+	# Pause doubles as "back" in menus, so it must not share a confirm key.
+	if action == "pause" and keycode in BINDINGS.start:
+		return false
+	# One key, one action: take it away from whichever action had it.
+	for other in REMAPPABLE_ACTIONS:
+		if other != action:
+			_erase_key(other, keycode)
 	_clear_keyboard_events(action)
 	_add_key(action, keycode)
+	if action == "pause":
+		_add_key(action, KEY_ESCAPE)
 	_custom_keys[action] = keycode
 	if save:
 		_save_settings()
 	settings_changed.emit()
+	return true
 
 
 func reset_key_bindings(save := true) -> void:
@@ -204,6 +257,14 @@ func reset_key_bindings(save := true) -> void:
 	if save:
 		_save_settings()
 	settings_changed.emit()
+
+
+func _erase_key(action: String, keycode: Key) -> void:
+	for event in InputMap.action_get_events(action):
+		if event is InputEventKey and event.physical_keycode == keycode:
+			InputMap.action_erase_event(action, event)
+	if _custom_keys.get(action) == keycode:
+		_custom_keys.erase(action)
 
 
 func _clear_keyboard_events(action: String) -> void:
@@ -305,6 +366,7 @@ func reset_run() -> void:
 ## Per-life reset; keeps score, lives and any checkpoint.
 func reset_life() -> void:
 	rings = 0
+	_ring_life_marks = 0
 	rings_changed.emit(rings)
 
 

@@ -145,8 +145,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode != KEY_ESCAPE:
-			Game.set_key_binding(_capturing, event.physical_keycode)
-			Sfx.play("checkpoint", 1.1)
+			if Game.set_key_binding(_capturing, event.physical_keycode):
+				Sfx.play("checkpoint", 1.1)
+			else:
+				Sfx.play("hurt", 1.2)
 		_capturing = ""
 		_block_frames = 2
 		_refresh()

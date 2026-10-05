@@ -672,6 +672,7 @@ func launch(direction: Vector2, power: float) -> void:
 	control_lock = 0
 	_set_size(false, false)
 	rolling = false
+	_end_air_move()
 
 
 ## Bounce off a destroyed badnik or a monitor.
@@ -714,10 +715,11 @@ func give_invincibility() -> void:
 
 
 func take_damage(from_x: float) -> void:
-	if is_invulnerable() or state == State.DEAD:
+	if is_invulnerable() or state == State.DEAD or state == State.GOAL:
 		return
 	if Game.rings > 0:
 		_scatter_rings()
+		_end_air_move()
 		state = State.HURT
 		invuln = INVULN_FRAMES
 		grounded = false
@@ -730,6 +732,13 @@ func take_damage(from_x: float) -> void:
 		Sfx.play("hurt")
 	else:
 		kill()
+
+
+## A hit or a spring cancels any special move, so it stops counting as an attack.
+func _end_air_move() -> void:
+	air_move = AirMove.NONE
+	air_move_timer = 0
+	refresh_hitbox()
 
 
 func kill() -> void:

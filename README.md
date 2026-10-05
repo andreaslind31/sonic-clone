@@ -25,6 +25,7 @@ godot --path .          # or just open the folder in the Godot editor
 | Esc / P | pause, and open the resume / restart / quit menu |
 | O | open options from the title screen |
 | R | restart the act |
+| F11 | toggle fullscreen |
 | F1 | draw the collision sensors |
 
 A gamepad works too: left stick or d-pad, bottom face button to jump, and Start
@@ -65,9 +66,12 @@ mid-run.
 ## Options and records
 
 The title screen opens Options with **O**, and the pause menu has the same screen.
-Music and sound-effect volume are independent, fullscreen changes immediately,
+Music and sound-effect volume are independent, fullscreen changes immediately
+(F11 toggles it anywhere),
 and each gameplay keyboard action can be rebound. Controller movement, jump and
-pause bindings stay available when keyboard controls are changed.
+pause bindings stay available when keyboard controls are changed. A key belongs
+to one action at a time, Esc always pauses and backs out of menus, and F1, F11
+and O are reserved.
 
 Settings are saved to Godot's per-user `settings.cfg`. Finishing an act also
 saves the best time for that character and act to `progress.cfg`; character
