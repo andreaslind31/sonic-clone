@@ -1,10 +1,6 @@
 extends RefCounted
 class_name Characters
-## The playable roster.
-##
-## These are original characters. The movesets are the classic archetypes — a
-## balanced runner, a flier, a glider-climber, a striker — because that is what
-## makes the level design interesting; the characters themselves are ours.
+## The playable Sonic character roster.
 ##
 ## Only the fields that differ from CharacterStats' SPG defaults are set here.
 
@@ -36,7 +32,7 @@ static func names() -> PackedStringArray:
 ## The reference character: pure SPG values, no mid-air move.
 static func runner() -> CharacterStats:
 	var stats := CharacterStats.new()
-	stats.display_name = "DASH"
+	stats.display_name = "SONIC"
 	stats.slug = "dash"
 	stats.blurb = "fastest on the ground"
 	stats.ability = CharacterStats.Ability.NONE
@@ -46,7 +42,7 @@ static func runner() -> CharacterStats:
 ## Lighter and slower, but can climb under its own power.
 static func flier() -> CharacterStats:
 	var stats := CharacterStats.new()
-	stats.display_name = "PIP"
+	stats.display_name = "TAILS"
 	stats.slug = "pip"
 	stats.blurb = "jump again to fly"
 	stats.ability = CharacterStats.Ability.FLY
@@ -61,7 +57,7 @@ static func flier() -> CharacterStats:
 ## Heavier: a weaker jump, but glides and climbs walls.
 static func glider() -> CharacterStats:
 	var stats := CharacterStats.new()
-	stats.display_name = "BRAWN"
+	stats.display_name = "KNUCKLES"
 	stats.slug = "brawn"
 	stats.blurb = "glides and climbs walls"
 	stats.ability = CharacterStats.Ability.GLIDE
@@ -74,7 +70,7 @@ static func glider() -> CharacterStats:
 ## Trades a little top speed for an attacking air dash.
 static func striker() -> CharacterStats:
 	var stats := CharacterStats.new()
-	stats.display_name = "VOLT"
+	stats.display_name = "SHADOW"
 	stats.slug = "volt"
 	stats.blurb = "jump again to air dash"
 	stats.ability = CharacterStats.Ability.AIR_DASH
@@ -87,7 +83,7 @@ static func striker() -> CharacterStats:
 ## No spindash, but a hammer swing that clears badniks from standing height.
 static func smasher() -> CharacterStats:
 	var stats := CharacterStats.new()
-	stats.display_name = "ROSA"
+	stats.display_name = "AMY"
 	stats.slug = "rosa"
 	stats.blurb = "jump again to swing"
 	stats.ability = CharacterStats.Ability.HAMMER

@@ -11,6 +11,10 @@ var _lit := false
 static func create(where: Vector2) -> Checkpoint:
 	var post := Checkpoint.new()
 	post.position = where
+	# A restarted act rebuilds its objects from scratch. Restore the active
+	# checkpoint instead of showing it as unlit and awarding its score again as
+	# soon as the respawned player overlaps it.
+	post._lit = Game.checkpoint_set and is_equal_approx(Game.checkpoint.x, where.x)
 	post.collision_layer = Game.COLLISION_LAYERS.object
 	post.collision_mask = Game.COLLISION_LAYERS.player_hitbox
 	post._build()
@@ -18,7 +22,7 @@ static func create(where: Vector2) -> Checkpoint:
 
 
 func _build() -> void:
-	_sprite = Art.still("res://assets/sprites/checkpoint.png", 24, 48)
+	_sprite = Art.still("res://assets/sprites/checkpoint.png", 24, 48, 1 if _lit else 0)
 	_sprite.position = Vector2(0, -24)
 	add_child(_sprite)
 	var shape := CollisionShape2D.new()

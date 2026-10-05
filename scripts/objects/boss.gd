@@ -1,6 +1,6 @@
 extends Node2D
 class_name Boss
-## End-of-zone boss: a hover pod with a swinging wrecking ball.
+## End-of-zone Eggman boss: a hover pod with a swinging wrecking ball.
 ##
 ## The fight follows the Genesis pattern. The pod sweeps back and forth over a
 ## sealed arena and drags a ball on a chain; the pod itself is the only thing that
@@ -139,7 +139,9 @@ func _flinch(delta: float) -> void:
 	if _hurt_timer <= 0:
 		phase = Phase.SWEEP
 		# resume from the nearest edge of the sweep rather than snapping back
-		_time = SWEEP_PERIOD * 0.25 if position.x < _origin.x else SWEEP_PERIOD * 0.75
+		var pace := 1.0 + float(MAX_HP - hp) * SPEED_PER_HIT
+		var edge_phase := 0.75 if position.x < _origin.x else 0.25
+		_time = SWEEP_PERIOD * edge_phase / pace
 
 
 func _die(delta: float) -> void:
@@ -173,7 +175,10 @@ func _update_rig() -> void:
 	_ball.visible = visible_rig
 	for link in _links:
 		link.visible = visible_rig
-	_ball_hitbox.monitoring = visible_rig
+	if _ball_hitbox.monitoring != visible_rig:
+		# Phase changes happen in the physics callback, while collision queries may
+		# still be flushing. Defer toggling the hazard to keep PhysicsServer happy.
+		_ball_hitbox.set_deferred("monitoring", visible_rig)
 
 
 func _on_pod_touched(area: Area2D) -> void:

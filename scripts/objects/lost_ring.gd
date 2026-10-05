@@ -17,14 +17,16 @@ var _shape: CollisionShape2D
 
 func _init() -> void:
 	collision_layer = Game.COLLISION_LAYERS.object
-	collision_mask = Game.COLLISION_LAYERS.player_hitbox
+	# Keep pickup detection off during the grace period. Using the area's mask
+	# avoids toggling a CollisionShape2D while this ring is being spawned from a
+	# physics callback.
+	collision_mask = 0
 	monitoring = true
 	add_child(Art.animated("res://assets/sprites/ring.png", 16, 16, 4, 14.0))
 	_shape = CollisionShape2D.new()
 	var circle := CircleShape2D.new()
 	circle.radius = 8.0
 	_shape.shape = circle
-	_shape.disabled = true
 	add_child(_shape)
 	area_entered.connect(_on_area_entered)
 
@@ -33,7 +35,7 @@ func _physics_process(delta: float) -> void:
 	var dt := delta * 60.0
 	_age += 1
 	if _age == GRACE_FRAMES:
-		_shape.disabled = false
+		set_deferred("collision_mask", Game.COLLISION_LAYERS.player_hitbox)
 	if _age > LIFETIME:
 		queue_free()
 		return
@@ -54,7 +56,8 @@ func _physics_process(delta: float) -> void:
 	var query := PhysicsRayQueryParameters2D.create(
 		global_position, global_position + Vector2(0.0, motion.y + 8.0)
 	)
-	query.collision_mask = Game.COLLISION_LAYERS.terrain_a | Game.COLLISION_LAYERS.terrain_b
+	query.collision_mask = Game.COLLISION_LAYERS.terrain_a \
+		| Game.COLLISION_LAYERS.terrain_b | Game.COLLISION_LAYERS.solid_object
 	var hit := space.intersect_ray(query)
 	if hit.is_empty():
 		position.y += motion.y

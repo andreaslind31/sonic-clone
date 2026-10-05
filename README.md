@@ -23,10 +23,12 @@ godot --path .          # or just open the folder in the Godot editor
 | ↑ | look up (the camera pans after two seconds) |
 | Space / Z / J | jump; press again in mid-air for the character's special move |
 | Esc / P | pause, and open the resume / restart / quit menu |
+| O | open options from the title screen |
 | R | restart the act |
 | F1 | draw the collision sensors |
 
-A gamepad works too: left stick or d-pad, bottom face button to jump.
+A gamepad works too: left stick or d-pad, bottom face button to jump, and Start
+to pause.
 
 The game boots to a title screen rather than into an act. Pick a character there
 with the arrows or the number keys, then Space or Enter to start; that choice is
@@ -39,19 +41,19 @@ be undone halfway through. Losing the last life returns to the title.
 
 ![the flier holding altitude above the ground route](docs/abilities.png)
 
-Five original characters, in `scripts/player/characters.gd`. Each is defined only
+Five characters from the Sonic series, in `scripts/player/characters.gd`. Each is defined only
 by what it overrides in `CharacterStats`, whose defaults *are* the SPG values —
 so the reference character is the guide, exactly, and every deviation is visible
 in one place.
 
-- **DASH** — the reference: pure SPG numbers, no mid-air move
-- **PIP** — lighter and slower; press jump again to fly, holding it to climb until
+- **SONIC** — the reference: pure SPG numbers, no mid-air move
+- **TAILS** — lighter and slower; press jump again to fly, holding it to climb until
   the flight timer runs out. Flying deliberately does not count as an attack
-- **BRAWN** — jumps lower (`6.0`); press jump again to glide, and a glide that
+- **KNUCKLES** — jumps lower (`6.0`); press jump again to glide, and a glide that
   touches a wall becomes a climb. Up/down climbs, jump pushes off backwards
-- **VOLT** — slightly faster; press jump again to dash at the nearest badnik, or
+- **SHADOW** — slightly faster; press jump again to dash at the nearest badnik, or
   straight ahead if there isn't one. The dash counts as an attack
-- **ROSA** — trades the spindash away for a hammer swing that widens the damage
+- **AMY** — trades the spindash away for a hammer swing that widens the damage
   box far enough to clear badniks from standing height
 
 All five share one hook — jump pressed while already airborne — implemented in
@@ -59,6 +61,18 @@ All five share one hook — jump pressed while already airborne — implemented 
 
 The roster is chosen on the title screen (`scripts/ui/menu.gd`) and cannot change
 mid-run.
+
+## Options and records
+
+The title screen opens Options with **O**, and the pause menu has the same screen.
+Music and sound-effect volume are independent, fullscreen changes immediately,
+and each gameplay keyboard action can be rebound. Controller movement, jump and
+pause bindings stay available when keyboard controls are changed.
+
+Settings are saved to Godot's per-user `settings.cfg`. Finishing an act also
+saves the best time for that character and act to `progress.cfg`; character
+select shows all three personal bests and the number of cleared acts. Slower
+finishes never overwrite a faster record.
 
 ## The boss
 
@@ -131,7 +145,7 @@ right arc is no longer solid, so the player rolls out instead of looping forever
 
 ```
 project.godot          autoloads, input map, 424x240 viewport
-scenes/main.tscn       the whole game; everything else is built in code
+scenes/game.tscn       the whole game; everything else is built in code
 scripts/player/        physics, sensors, character stats, abilities
 scripts/world/         terrain, blocks, loops, path switchers, camera, parallax
 scripts/objects/       rings, springs, monitors, badniks, spikes, platforms, goal
@@ -237,4 +251,6 @@ godot --headless res://tools/capture.tscn -- --act=1 --char=2 --warp=2760 \
 
 Original code and generated assets are released under CC0. The Kenney sources in
 `assets/kenney/` are CC0, with their licence text alongside them. This is an
-original work; it borrows no code or art from any Sega title.
+unofficial fan project: the character names and the art in `assets/shadow.png`
+and `assets/sonic game.png` refer to Sega's Sonic the Hedgehog series, which
+remains Sega's property and is not covered by the CC0 release.

@@ -12,9 +12,13 @@ var _voices: Array[AudioStreamPlayer] = []
 var _next_voice := 0
 var _music_player: AudioStreamPlayer
 var _music_volume_db := -9.0
+var _sfx_gain_db := 0.0
+var _music_gain_db := 0.0
 
 
 func _ready() -> void:
+	_sfx_gain_db = Game.volume_db(Game.sfx_volume)
+	_music_gain_db = Game.volume_db(Game.music_volume)
 	for i in VOICES:
 		var player := AudioStreamPlayer.new()
 		player.bus = "Master"
@@ -22,7 +26,7 @@ func _ready() -> void:
 		_voices.append(player)
 	_music_player = AudioStreamPlayer.new()
 	_music_player.bus = "Master"
-	_music_player.volume_db = _music_volume_db
+	_music_player.volume_db = _music_volume_db + _music_gain_db
 	add_child(_music_player)
 
 
@@ -47,7 +51,7 @@ func play(name: String, pitch := 1.0, volume_db := 0.0) -> void:
 	_next_voice = (_next_voice + 1) % VOICES
 	player.stream = stream
 	player.pitch_scale = pitch
-	player.volume_db = volume_db
+	player.volume_db = volume_db + _sfx_gain_db
 	player.play()
 
 
@@ -72,8 +76,19 @@ func play_music(name := "music_zone") -> void:
 		wav.loop_begin = 0
 		wav.loop_end = wav.data.size() / 2  # 16-bit mono: two bytes per frame
 	_music_player.stream = stream
-	_music_player.volume_db = _music_volume_db
+	_music_player.volume_db = _music_volume_db + _music_gain_db
 	_music_player.play()
+
+
+func apply_settings() -> void:
+	var next_sfx := Game.volume_db(Game.sfx_volume)
+	var shift := next_sfx - _sfx_gain_db
+	_sfx_gain_db = next_sfx
+	_music_gain_db = Game.volume_db(Game.music_volume)
+	for player in _voices:
+		player.volume_db += shift
+	if _music_player:
+		_music_player.volume_db = _music_volume_db + _music_gain_db
 
 
 func stop_music() -> void:

@@ -352,6 +352,9 @@ func _on_goal_reached() -> void:
 	pause_menu.can_pause = false
 	Sfx.fade_music(0.3)
 	Sfx.play("goal")
+	var new_best := Game.record_completion(
+		Game.character_index, Game.act_index, Game.time_left
+	)
 	var time_bonus := int(maxf(0.0, act.time_bonus_cutoff - Game.time_left) * 100.0)
 	var ring_bonus := Game.rings * 100
 	Game.add_score(time_bonus + ring_bonus)
@@ -359,7 +362,7 @@ func _on_goal_reached() -> void:
 	var last_act := Game.act_index >= Acts.count() - 1
 	hud.show_results("TIME %s   RINGS %d   BONUS %d" % [
 		Game.time_string(), Game.rings, time_bonus + ring_bonus
-	], "SPACE FOR THE TITLE SCREEN" if last_act else "NEXT ACT...")
+	], _results_footer(last_act, new_best))
 	if last_act:
 		_awaiting_title = true
 		return
@@ -372,3 +375,8 @@ func _on_goal_reached() -> void:
 	hud.fade_out(0.5)
 	await get_tree().create_timer(0.55).timeout
 	get_tree().reload_current_scene()
+
+
+func _results_footer(last_act: bool, new_best: bool) -> String:
+	var destination := "SPACE FOR THE TITLE SCREEN" if last_act else "NEXT ACT..."
+	return "NEW BEST!   %s" % destination if new_best else destination

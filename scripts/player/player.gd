@@ -766,13 +766,22 @@ func finish_act() -> void:
 
 func _scatter_rings() -> void:
 	var count := mini(Game.rings, 32)
+	# Damage arrives from an Area2D callback. Constructing collision shapes in
+	# that callback makes PhysicsServer reject them while it is flushing queries,
+	# so create the lost rings once the callback has unwound.
+	call_deferred("_spawn_scattered_rings", count, position)
+	Game.rings = 0
+	Game.rings_changed.emit(0)
+
+
+func _spawn_scattered_rings(count: int, where: Vector2) -> void:
 	var scene := load("res://scripts/objects/lost_ring.gd") as GDScript
 	var angle := 101.25
 	var flip := false
 	var speed := 4.0
 	for i in count:
 		var ring: Node2D = scene.new()
-		ring.position = position
+		ring.position = where
 		var direction := Vector2(cos(deg_to_rad(angle)), -sin(deg_to_rad(angle)))
 		if flip:
 			direction.x *= -1.0
@@ -783,8 +792,6 @@ func _scatter_rings() -> void:
 			angle = 101.25
 		ring.set("velocity", direction * speed)
 		get_parent().add_child(ring)
-	Game.rings = 0
-	Game.rings_changed.emit(0)
 
 
 # --------------------------------------------------------------------------- #

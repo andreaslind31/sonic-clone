@@ -38,7 +38,8 @@ func _physics_process(delta: float) -> void:
 	var motion := velocity * dt
 	var space := get_world_2d().direct_space_state
 	var query := PhysicsRayQueryParameters2D.create(global_position, global_position + motion)
-	query.collision_mask = Game.COLLISION_LAYERS.terrain_a | Game.COLLISION_LAYERS.terrain_b
+	query.collision_mask = Game.COLLISION_LAYERS.terrain_a \
+		| Game.COLLISION_LAYERS.terrain_b | Game.COLLISION_LAYERS.solid_object
 	if not space.intersect_ray(query).is_empty():
 		Art.effect(get_parent(), "res://assets/sprites/dust.png", 24, 24, 4, global_position)
 		queue_free()

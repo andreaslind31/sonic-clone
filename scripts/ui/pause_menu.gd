@@ -14,12 +14,13 @@ signal resumed()
 signal restart_requested()
 signal quit_requested()
 
-const OPTIONS := ["RESUME", "RESTART ACT", "QUIT TO TITLE"]
+const OPTIONS := ["RESUME", "RESTART ACT", "OPTIONS", "QUIT TO TITLE"]
 
 var can_pause := true
 
 var _panel: Control
 var _rows: Array[Label] = []
+var _options_menu: OptionsMenu
 var _selected := 0
 var _paused := false
 
@@ -47,12 +48,15 @@ func _build() -> void:
 
 	_panel.add_child(_label("PAUSED", Color(1, 0.85, 0.15), 20, 62.0))
 	for i in OPTIONS.size():
-		var row := _label("", Color(0.8, 0.86, 1.0), 11, 116.0 + i * 18.0)
+		var row := _label("", Color(0.8, 0.86, 1.0), 11, 106.0 + i * 18.0)
 		_panel.add_child(row)
 		_rows.append(row)
 	_panel.add_child(_label("ESC RESUMES     ARROWS AND SPACE TO CHOOSE",
 		Color(0.66, 0.72, 0.9), 8, 208.0))
 	add_child(_panel)
+	_options_menu = OptionsMenu.create()
+	_options_menu.closed.connect(_on_options_closed)
+	add_child(_options_menu)
 	_refresh()
 
 
@@ -75,6 +79,8 @@ func is_paused() -> bool:
 
 
 func _process(_delta: float) -> void:
+	if _options_menu != null and _options_menu.is_open():
+		return
 	if not _paused:
 		if can_pause and Input.is_action_just_pressed("pause"):
 			pause()
@@ -134,6 +140,9 @@ func _confirm() -> void:
 			_leave()
 			restart_requested.emit()
 		2:
+			_panel.visible = false
+			_options_menu.open()
+		3:
 			_leave()
 			quit_requested.emit()
 		_:
@@ -145,3 +154,8 @@ func _leave() -> void:
 	_paused = false
 	_panel.visible = false
 	get_tree().paused = false
+
+
+func _on_options_closed() -> void:
+	if _paused:
+		_panel.visible = true

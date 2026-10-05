@@ -12,3 +12,9 @@
 # Godot
 .godot/
 build/
+
+# Promo art (kept local)
+marketing/
+
+# Unrelated nested project
+hk-varberg-bank-fix/

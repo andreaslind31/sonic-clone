@@ -7,8 +7,8 @@ class_name TitleMenu
 ## around one character's moves cannot be undone halfway through by swapping to
 ## another.
 
-const ROSTER_TOP := 118.0
-const ROW_HEIGHT := 15.0
+const ROSTER_TOP := 112.0
+const ROW_HEIGHT := 13.0
 const ROSTER_X := 132.0
 const PREVIEW_POSITION := Vector2(78.0, 150.0)
 
@@ -16,9 +16,11 @@ var _selected := 0
 var _rows: Array[Label] = []
 var _blurb: Label
 var _stats: Label
+var _records: Label
 var _preview: Sprite2D
 var _prompt: Label
 var _fade: ColorRect
+var _options: OptionsMenu
 var _starting := false
 
 
@@ -52,12 +54,14 @@ func _build() -> void:
 		layer.add_child(row)
 		_rows.append(row)
 
-	_blurb = _label("", Color(0.95, 0.95, 0.7), 9, 196.0)
+	_blurb = _label("", Color(0.95, 0.95, 0.7), 8, 181.0)
 	layer.add_child(_blurb)
-	_stats = _label("", Color(0.72, 0.8, 0.95), 8, 208.0)
+	_stats = _label("", Color(0.72, 0.8, 0.95), 7, 193.0)
 	layer.add_child(_stats)
-	_prompt = _label("SPACE OR ENTER TO START     ARROWS TO CHOOSE",
-		Color(1, 1, 1), 9, 224.0)
+	_records = _label("", Color(0.95, 0.88, 0.5), 7, 205.0)
+	layer.add_child(_records)
+	_prompt = _label("SPACE STARTS     ARROWS CHOOSE     O OPTIONS",
+		Color(1, 1, 1), 8, 226.0)
 	layer.add_child(_prompt)
 
 	_preview = Sprite2D.new()
@@ -73,6 +77,9 @@ func _build() -> void:
 	layer.add_child(_fade)
 	var tween := create_tween()
 	tween.tween_property(_fade, "color:a", 0.0, 0.5)
+
+	_options = OptionsMenu.create()
+	add_child(_options)
 
 
 func _label(text: String, colour: Color, size: int, y: float) -> Label:
@@ -90,7 +97,10 @@ func _label(text: String, colour: Color, size: int, y: float) -> Label:
 
 
 func _process(_delta: float) -> void:
-	if _starting:
+	if _starting or _options.is_open():
+		return
+	if Input.is_action_just_pressed("options"):
+		_options.open()
 		return
 	if Input.is_action_just_pressed("move_right") or Input.is_action_just_pressed("crouch"):
 		_move(1)
@@ -126,6 +136,13 @@ func _refresh() -> void:
 		character.top_speed, character.jump_force,
 		"SPINDASH" if character.can_spindash else "NO SPINDASH",
 	]
+	var cleared := Game.cleared_count(_selected)
+	var records := PackedStringArray()
+	for act_index in Acts.count():
+		records.append("A%d %s" % [
+			act_index + 1, Game.format_time(Game.best_time(_selected, act_index))
+		])
+	_records.text = "CLEAR %d/%d   %s" % [cleared, Acts.count(), "   ".join(records)]
 	_preview.texture = load(character.sprite_sheet())
 	_preview.region_enabled = true
 	_preview.region_rect = Rect2(0, 0, 40, 44)

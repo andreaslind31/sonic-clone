@@ -18,6 +18,9 @@ var _current := ""
 
 
 func _ready() -> void:
+	Game.settings_path = "user://sonic-clone-tests-settings.cfg"
+	Game.progress_path = "user://sonic-clone-tests-progress.cfg"
+	_remove_test_files()
 	await _run_all()
 	_report()
 
@@ -38,6 +41,8 @@ func _run_all() -> void:
 		{"name": "rolling shrinks the hitbox and keeps the feet down", "fn": _test_roll_hitbox},
 		{"name": "loop is traversed, flips path layer, and exits", "fn": _test_loop},
 		{"name": "rings are collected and scored", "fn": _test_rings},
+		{"name": "lost rings bounce off solid objects", "fn": _test_lost_ring_solids},
+		{"name": "enemy shots stop at solid objects", "fn": _test_projectile_solids},
 		{"name": "sensors agree with the generated surface", "fn": _test_sensors},
 		{"name": "every character keeps the SPG defaults it does not override",
 			"fn": _test_character_defaults, "zone": false},
@@ -56,15 +61,29 @@ func _run_all() -> void:
 		{"name": "acts are registered and distinct", "fn": _test_act_registry, "zone": false},
 		{"name": "no act object is stranded over a gap or off a block",
 			"fn": _test_act_placement, "zone": false},
+		{"name": "settings persist and keyboard controls can be remapped",
+			"fn": _test_settings_persistence, "zone": false},
+		{"name": "completion records preserve the fastest time",
+			"fn": _test_completion_records, "zone": false},
+		{"name": "the options overlay edits settings and captures a key",
+			"fn": _test_options_menu, "zone": false},
 		{"name": "the game boots into the menu, not into an act",
 			"fn": _test_boots_to_menu, "zone": false},
 		{"name": "the menu picks a character and starts the game",
 			"fn": _test_menu_select, "zone": false},
+		{"name": "the controller start button pauses the game",
+			"fn": _test_controller_pause_binding, "zone": false},
 		{"name": "character cannot be switched mid-run", "fn": _test_no_mid_run_switch,
 			"character": 2},
+		{"name": "an active checkpoint stays active after respawning",
+			"fn": _test_checkpoint_persists},
 		{"name": "escape pauses and resumes, freezing the player", "fn": _test_pause},
+		{"name": "options can be changed without unpausing the game",
+			"fn": _test_pause_options},
 		{"name": "boss wakes in its arena and locks the camera", "fn": _test_boss_wakes, "zone": false},
 		{"name": "boss takes hits only from an attacking player", "fn": _test_boss_damage, "zone": false},
+		{"name": "boss resumes from the same edge after a hit",
+			"fn": _test_boss_resume_edge, "zone": false},
 		{"name": "eight hits finish the boss and drop the capsule", "fn": _test_boss_defeat, "zone": false},
 		{"name": "the wrecking ball hurts even an attacking player", "fn": _test_boss_ball, "zone": false},
 		{"name": "leaving the pause menu never leaves the tree paused",
@@ -178,6 +197,7 @@ func _check_near(actual: float, expected: float, tolerance: float, label: String
 
 func _report() -> void:
 	print("")
+	_remove_test_files()
 	if _failures.is_empty():
 		print("%d checks passed" % _checks)
 		get_tree().quit(0)
@@ -186,6 +206,13 @@ func _report() -> void:
 	for failure in _failures:
 		print("  - %s" % failure)
 	get_tree().quit(1)
+
+
+func _remove_test_files() -> void:
+	for path in [Game.settings_path, Game.progress_path]:
+		var absolute := ProjectSettings.globalize_path(path)
+		if FileAccess.file_exists(absolute):
+			DirAccess.remove_absolute(absolute)
 
 
 # --------------------------------------------------------------------------- #
@@ -368,6 +395,30 @@ func _test_rings(zone: Zone) -> void:
 	_check(Game.score >= 30, "expected 30 points of ring score, got %d" % Game.score)
 
 
+func _test_lost_ring_solids(zone: Zone) -> void:
+	var platform := MovingPlatform.create(Vector2(500.0, 200.0), Vector2.ZERO)
+	zone.add_child(platform)
+	var ring := LostRing.new()
+	ring.position = Vector2(500.0, 160.0)
+	ring.velocity = Vector2(0.0, 4.0)
+	zone.add_child(ring)
+	await _frames(12)
+	_check(is_instance_valid(ring), "the lost ring disappeared before its lifetime ended")
+	if is_instance_valid(ring):
+		_check(ring.velocity.y < 0.0,
+			"expected the lost ring to bounce off the platform, y velocity is %.3f"
+				% ring.velocity.y)
+
+
+func _test_projectile_solids(zone: Zone) -> void:
+	var blocker := Monitor.create(Vector2(500.0, 200.0), Monitor.Item.RINGS)
+	zone.add_child(blocker)
+	var shot := Projectile.create(Vector2(450.0, 200.0), Vector2(4.0, 0.0))
+	zone.add_child(shot)
+	await _frames(20)
+	_check(not is_instance_valid(shot), "the enemy shot passed through a solid monitor")
+
+
 func _test_sensors(zone: Zone) -> void:
 	var space := zone.get_world_2d().direct_space_state
 	var x := 120.0
@@ -391,6 +442,9 @@ func _test_sensors(zone: Zone) -> void:
 ## must still be the guide's number.
 func _test_character_defaults(_zone: Zone) -> void:
 	var reference := CharacterStats.new()
+	_check(Characters.names() == PackedStringArray([
+		"SONIC", "TAILS", "KNUCKLES", "SHADOW", "AMY",
+	]), "roster uses the Sonic character names")
 	_check_near(reference.acceleration, Player.ACC, EPS, "default acceleration")
 	_check_near(reference.friction, Player.FRC, EPS, "default friction")
 	_check_near(reference.deceleration, Player.DEC, EPS, "default deceleration")
@@ -645,6 +699,81 @@ func _test_act_registry(_zone: Zone) -> void:
 
 
 # --------------------------------------------------------------------------- #
+# settings and persistent progress
+# --------------------------------------------------------------------------- #
+func _test_settings_persistence(_zone: Zone) -> void:
+	_remove_test_files()
+	Game.reset_key_bindings(false)
+	Game.set_music_volume(0.3, false)
+	Game.set_sfx_volume(0.6, false)
+	Game.set_fullscreen(true, false)
+	Game.set_key_binding("jump", KEY_K)
+
+	# Scramble memory, then prove the file restores every setting.
+	Game.music_volume = 1.0
+	Game.sfx_volume = 1.0
+	Game.fullscreen = false
+	Game.reset_key_bindings(false)
+	Game.call("_load_settings")
+	_check_near(Game.music_volume, 0.3, EPS, "saved music volume")
+	_check_near(Game.sfx_volume, 0.6, EPS, "saved SFX volume")
+	_check(Game.fullscreen, "saved fullscreen setting was not restored")
+	_check(Game.key_binding_text("jump") == "K",
+		"saved jump key should be K, got %s" % Game.key_binding_text("jump"))
+
+	Game.reset_key_bindings(false)
+	Game.set_music_volume(0.8, false)
+	Game.set_sfx_volume(1.0, false)
+	Game.set_fullscreen(false, false)
+	_remove_test_files()
+
+
+func _test_completion_records(_zone: Zone) -> void:
+	_remove_test_files()
+	Game.set("_best_times", {})
+	_check(Game.record_completion(1, 0, 65.0), "a first clear should be a new best")
+	_check(not Game.record_completion(1, 0, 80.0), "a slower clear replaced the best time")
+	_check(Game.record_completion(1, 0, 60.0), "a faster clear should be a new best")
+	_check_near(Game.best_time(1, 0), 60.0, EPS, "best completion time")
+	_check(Game.cleared_count(1) == 1, "expected one cleared act for the character")
+
+	Game.set("_best_times", {})
+	Game.call("_load_progress")
+	_check_near(Game.best_time(1, 0), 60.0, EPS, "reloaded completion time")
+	Game.set("_best_times", {})
+	_remove_test_files()
+
+
+func _test_options_menu(_zone: Zone) -> void:
+	Game.reset_key_bindings(false)
+	Game.set_music_volume(0.8, false)
+	var menu := OptionsMenu.create()
+	add_child(menu)
+	await get_tree().process_frame
+	menu.open()
+	menu.call("_adjust", -1)
+	_check_near(Game.music_volume, 0.7, EPS, "music volume changed by the options menu")
+
+	menu.call("_show_page", 1)
+	menu.set("_selected", 0)
+	menu.call("_confirm")
+	_check(menu.get("_capturing") == "move_left", "control selection did not await a key")
+	var key_event := InputEventKey.new()
+	key_event.pressed = true
+	key_event.physical_keycode = KEY_Q
+	menu.call("_unhandled_input", key_event)
+	_check(Game.key_binding_text("move_left") == "Q",
+		"options menu should bind move left to Q, got %s" % Game.key_binding_text("move_left"))
+	menu.close()
+	_check(not menu.is_open(), "options menu should close cleanly")
+	menu.queue_free()
+	await get_tree().process_frame
+	Game.reset_key_bindings(false)
+	Game.set_music_volume(0.8, false)
+	_remove_test_files()
+
+
+# --------------------------------------------------------------------------- #
 # menu and run boundaries
 # --------------------------------------------------------------------------- #
 ## Launching the app must not drop straight into gameplay.
@@ -680,6 +809,7 @@ func _test_menu_select(_zone: Zone) -> void:
 	_release("move_right")
 	await _frames(2)
 	_check(menu.get("_selected") == 3, "expected the arrows to move the cursor")
+	_check(menu.get("_options") is OptionsMenu, "the title screen should contain options")
 	menu.call("_start")
 	await _frames(2)
 	_check(Game.character_index == 3,
@@ -704,6 +834,14 @@ func _test_menu_select(_zone: Zone) -> void:
 	await get_tree().process_frame
 
 
+func _test_controller_pause_binding(_zone: Zone) -> void:
+	var has_start := false
+	for event in InputMap.action_get_events("pause"):
+		if event is InputEventJoypadButton and event.button_index == JOY_BUTTON_START:
+			has_start = true
+	_check(has_start, "the pause action has no controller start-button binding")
+
+
 ## A run keeps whichever character started it.
 func _test_no_mid_run_switch(zone: Zone) -> void:
 	var before := zone.player.stats.slug
@@ -717,6 +855,21 @@ func _test_no_mid_run_switch(zone: Zone) -> void:
 	_check(zone.player.stats.slug == before,
 		"character changed mid-run from %s to %s" % [before, zone.player.stats.slug])
 	_check(Game.character_index == 2, "the roster choice should be untouched during a run")
+
+
+func _test_checkpoint_persists(zone: Zone) -> void:
+	var where := Vector2(520.0, zone.surface_y(520.0))
+	Game.set_checkpoint(where + Vector2(0, -20))
+	Game.score = 50
+	var post := Checkpoint.create(where)
+	zone.add_child(post)
+	await get_tree().process_frame
+	_check(bool(post.get("_lit")), "the rebuilt checkpoint should already be active")
+	var sprite := post.get("_sprite") as Sprite2D
+	_check(sprite != null and is_equal_approx(sprite.region_rect.position.x, 24.0),
+		"the rebuilt checkpoint should show its lit frame")
+	post.call("_on_area_entered", _player_hitbox(zone.player))
+	_check(Game.score == 50, "respawning at the checkpoint awarded its score again")
 
 
 # --------------------------------------------------------------------------- #
@@ -745,10 +898,25 @@ func _test_pause(zone: Zone) -> void:
 	_check(player.global_position.x > frozen_x, "expected movement to continue after resuming")
 
 
+func _test_pause_options(zone: Zone) -> void:
+	zone.pause_menu.pause()
+	zone.pause_menu.set("_selected", 2)
+	zone.pause_menu.call("_confirm")
+	var options := zone.pause_menu.get("_options_menu") as OptionsMenu
+	_check(options != null and options.is_open(), "pause menu should open the options overlay")
+	_check(get_tree().paused, "opening options should keep gameplay paused")
+	if options != null:
+		options.close()
+	_check(get_tree().paused, "closing options should return to the paused menu")
+	zone.pause_menu.resume()
+	_check(not get_tree().paused, "resuming after options should unpause the game")
+
+
 ## A scene change made while paused would load the next scene frozen, so every
 ## way out of this menu has to clear the flag.
 func _test_pause_exits_clean(zone: Zone) -> void:
-	for option in [0, 1, 2]:
+	# Options stays paused by design; the three actual exits must clear the flag.
+	for option in [0, 1, 3]:
 		zone.pause_menu.pause()
 		await _frames(2)
 		_check(get_tree().paused, "option %d: expected a pause" % option)
@@ -838,6 +1006,27 @@ func _test_boss_damage(_fixture: Zone) -> void:
 	player.velocity = Vector2(0.0, -1.0)
 	await _frames(4)
 	_check(boss.hp < hp_before, "jumping into the pod should hurt it, hp is %d" % boss.hp)
+	zone.queue_free()
+	await get_tree().process_frame
+
+
+func _test_boss_resume_edge(_fixture: Zone) -> void:
+	var zone := await _boss_zone()
+	var boss := _find_boss(zone)
+	if boss == null:
+		zone.queue_free()
+		return
+	var origin: Vector2 = boss.get("_origin")
+	zone.player.global_position = Vector2(origin.x - 300.0, origin.y + 80.0)
+	boss.hp = Boss.MAX_HP - 1
+	boss.phase = Boss.Phase.HURT
+	boss.position.x = origin.x - 60.0
+	boss.set("_hurt_timer", 1)
+	boss.set("_knockback", Vector2.ZERO)
+	await _frames(2)
+	_check(boss.position.x < origin.x,
+		"the boss crossed the arena after flinching on the left (x %.1f, centre %.1f)"
+			% [boss.position.x, origin.x])
 	zone.queue_free()
 	await get_tree().process_frame
 
